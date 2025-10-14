@@ -106,7 +106,12 @@ class MainWindow(QWidget):
         self.ders_window.show()
 
     def open_ogrenci_panel(self):
-        QMessageBox.information(self, "Bilgi", "Öğrenci yükleme ve listeleme ekranı açılacak.")
+        try:
+            from OgrenciYukleWindow import OgrenciYukleWindow
+            self.ogrenci_window = OgrenciYukleWindow(self.bolum_id)
+            self.ogrenci_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Öğrenci yükleme ekranı açılırken hata oluştu:\n{str(e)}")
 
     def open_sinav_panel(self):
         try:

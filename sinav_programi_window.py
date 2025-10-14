@@ -77,7 +77,7 @@ class SinavProgramiWindow(QWidget):
         conn = sqlite3.connect("sinav_takvimi.db")
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, ders_adi, ders_kodu FROM Dersler WHERE bolum_id=?",
+            "SELECT rowid AS id, ders_adi, ders_kodu FROM Dersler WHERE bolum_id=?",
             (self.bolum_id,)
         )
         dersler = cursor.fetchall()
@@ -168,7 +168,8 @@ class SinavProgramiWindow(QWidget):
             program = []
             for ders_id in secili_dersler:
                 # Ders bilgilerini çek
-                cursor.execute("SELECT ders_kodu, ders_adi FROM Dersler WHERE id=?", (ders_id,))
+                cursor.execute("SELECT ders_kodu, ders_adi FROM Dersler WHERE rowid=?", (ders_id,))
+
                 row = cursor.fetchone()
                 if not row:
                     # Ders silinmiş olabilir

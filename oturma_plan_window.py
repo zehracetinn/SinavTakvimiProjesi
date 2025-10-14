@@ -54,7 +54,15 @@ class OturmaPlanWindow(QWidget):
     def load_sinavlar(self):
         conn = sqlite3.connect("sinav_takvimi.db")
         c = conn.cursor()
-        c.execute("SELECT id, ders, derslik, tarih, saat FROM SinavProgrami WHERE bolum_id=?", (self.bolum_id,))
+        c.execute("""
+            SELECT sp.id, d.ders_adi, dl.derslik_adi, sp.tarih, sp.saat
+            FROM SinavProgrami sp
+            LEFT JOIN Dersler d ON sp.ders_id = d.rowid
+            LEFT JOIN Derslikler dl ON sp.derslik_id = dl.rowid
+            WHERE sp.bolum_id=?
+        """, (self.bolum_id,))
+
+
         sinavlar = c.fetchall()
         conn.close()
 
@@ -73,7 +81,15 @@ class OturmaPlanWindow(QWidget):
         c = conn.cursor()
 
         # Sınav bilgilerini al
-        c.execute("SELECT ders, derslik, tarih, saat FROM SinavProgrami WHERE id=?", (sinav_id,))
+        c.execute("""
+            SELECT d.ders_adi, dl.derslik_adi, sp.tarih, sp.saat
+            FROM SinavProgrami sp
+            LEFT JOIN Dersler d ON sp.ders_id = d.rowid
+            LEFT JOIN Derslikler dl ON sp.derslik_id = dl.rowid
+            WHERE sp.id=?
+        """, (sinav_id,))
+
+
         ders, derslik, tarih, saat = c.fetchone()
 
         # Derslik bilgileri
