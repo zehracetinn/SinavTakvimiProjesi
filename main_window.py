@@ -79,10 +79,20 @@ class MainWindow(QWidget):
 
     # --- Menü Fonksiyonları ---
     def open_user_management(self):
-        QMessageBox.information(self, "Bilgi", "Kullanıcı yönetimi ekranı açılacak (Admin modül).")
+        try:
+            from kullanici_window import KullaniciWindow
+            self.user_window = KullaniciWindow()
+            self.user_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Kullanıcı yönetimi ekranı açılırken hata oluştu:\n{str(e)}")
 
     def open_departments(self):
-        QMessageBox.information(self, "Bilgi", "Tüm bölümler listelenecek (Admin modül).")
+        try:
+            from bolum_window import BolumWindow
+            self.bolum_window = BolumWindow()
+            self.bolum_window.show()
+        except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Bölümler ekranı açılırken hata oluştu:\n{str(e)}")
 
     def open_derslik_panel(self):
         
