@@ -19,7 +19,7 @@ class OturmaPlanWindow(QWidget):
         self.setup_ui()
         self.load_sinavlar()
         self.current_plan = []  # (ogr_no, ad, sıra, sütun, koltuk_no)
-
+ 
     def setup_ui(self):
         layout = QVBoxLayout()
 

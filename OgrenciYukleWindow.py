@@ -1,69 +1,244 @@
 import pandas as pd
-import sqlite3
 from PyQt6.QtWidgets import (
-    QWidget, QLabel, QPushButton, QVBoxLayout, QFileDialog,
-    QMessageBox, QTableWidget, QTableWidgetItem
+    QWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
+    QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit, QHBoxLayout
 )
+from PyQt6.QtCore import Qt
+from database_helper import DatabaseHelper
+
 
 class OgrenciYukleWindow(QWidget):
     def __init__(self, bolum_id):
         super().__init__()
         self.bolum_id = bolum_id
-        self.setWindowTitle("Öğrenci Listesi Yükle")
-        self.setGeometry(400, 200, 700, 500)
-
-        self.conn = sqlite3.connect("sinav_takvimi.db")
-        self.cur = self.conn.cursor()
+        self.setWindowTitle("🎓 Öğrenci Listesi Yükleme")
+        self.setGeometry(400, 200, 900, 600)
+        self.df = None
         self.setup_ui()
 
     def setup_ui(self):
+        # ---- GENEL ARAYÜZ STİLİ ----
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f4f6f4;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+
+            QLabel {
+                color: #004d26;
+                font-size: 16px;
+                font-weight: 500;
+            }
+
+            QPushButton {
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 14px;
+                font-weight: bold;
+                color: white;
+                border: none;
+            }
+
+            QPushButton#upload {
+                background-color: #007bff;
+            }
+            QPushButton#upload:hover {
+                background-color: #1a8cff;
+            }
+
+            QPushButton#save {
+                background-color: #00b050;
+            }
+            QPushButton#save:hover {
+                background-color: #00cc5c;
+            }
+
+            QPushButton#search {
+                background-color: #f57c00;
+            }
+            QPushButton#search:hover {
+                background-color: #ffa31a;
+            }
+
+            QLineEdit {
+                border: 2px solid #007b5e;
+                border-radius: 5px;
+                padding: 6px;
+                background-color: white;
+                font-size: 13px;
+                color: black;
+
+            }
+
+            QTableWidget {
+                border: 1px solid #c8c8c8;
+                background-color: white;
+                alternate-background-color: #f2f2f2;
+                font-size: 13px;
+            }
+
+            QHeaderView::section {
+                background-color: #007b5e;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+
+        # ---- BAŞLIK ALANI ----
         title = QLabel("🎓 Öğrenci Listesi Yükleme ve Görüntüleme")
-        title.setStyleSheet("font-size:18px; font-weight:bold; margin-bottom:10px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            QLabel {
+                background-color: #007b5e;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }
+        """)
 
-        btn_upload = QPushButton("📁 Excel Dosyası Seç ve Yükle")
-        btn_upload.setStyleSheet("background-color:#3498db; color:white; font-weight:bold;")
-        btn_upload.clicked.connect(self.upload_excel)
+        # ---- BUTONLAR ----
+        btn_upload = QPushButton("📂 Excel Dosyası Seç")
+        btn_upload.setObjectName("upload")
+        btn_upload.clicked.connect(self.load_excel)
 
+        self.save_btn = QPushButton("💾 Veritabanına Kaydet")
+        self.save_btn.setObjectName("save")
+        self.save_btn.setEnabled(False)
+        self.save_btn.clicked.connect(self.save_to_db)
+
+        # ---- ARAMA ALANI ----
+        search_label = QLabel("🔍 Öğrenci No:")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Öğrenci numarasını girin...")
+        btn_search = QPushButton("Ara")
+        btn_search.setObjectName("search")
+        btn_search.clicked.connect(self.search_student)
+
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(btn_search)
+
+        # ---- TABLO ----
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad", "Sınıf", "Ders Kodu"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
 
-        vbox = QVBoxLayout()
-        vbox.addWidget(title)
-        vbox.addWidget(btn_upload)
-        vbox.addWidget(self.table)
-        self.setLayout(vbox)
+        # ---- DÜZEN ----
+        layout = QVBoxLayout()
+        layout.addWidget(title)
+        layout.addWidget(btn_upload)
+        layout.addWidget(self.save_btn)
+        layout.addLayout(search_layout)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
 
-    def upload_excel(self):
+    # ------------------ EXCEL YÜKLE ------------------
+    def load_excel(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)")
         if not file_path:
             return
 
         try:
             df = pd.read_excel(file_path)
-            required_columns = {"OgrenciNo", "AdSoyad", "Sinif", "DersKodu"}
-            if not required_columns.issubset(df.columns):
-                QMessageBox.warning(self, "Uyarı", "Excel dosyası uygun formatta değil!")
+            expected_cols = ["OgrenciNo", "AdSoyad", "Sinif", "DersKodu"]
+            if not all(col in df.columns for col in expected_cols):
+                QMessageBox.critical(self, "Hata", f"Excel formatı hatalı!\nBeklenen sütunlar:\n{expected_cols}")
                 return
 
-            for _, row in df.iterrows():
-                self.cur.execute("""
-                    INSERT INTO Ogrenci_Ders_Kayitlari (ogrenci_no, ad_soyad, sinif, ders_kodu, bolum_id)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (row["OgrenciNo"], row["AdSoyad"], row["Sinif"], row["DersKodu"], self.bolum_id))
-            self.conn.commit()
+            self.df = df.fillna("")
+            self.table.setRowCount(len(self.df))
+            for i, row in self.df.iterrows():
+                self.table.setItem(i, 0, QTableWidgetItem(str(row["OgrenciNo"])))
+                self.table.setItem(i, 1, QTableWidgetItem(str(row["AdSoyad"])))
+                self.table.setItem(i, 2, QTableWidgetItem(str(row["Sinif"])))
+                self.table.setItem(i, 3, QTableWidgetItem(str(row["DersKodu"])))
+            self.save_btn.setEnabled(True)
 
-            QMessageBox.information(self, "Başarılı", "Öğrenciler başarıyla yüklendi.")
-            self.show_table(df)
+            QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
 
         except Exception as e:
-            QMessageBox.critical(self, "Hata", f"Dosya okunamadı veya veritabanına eklenemedi:\n{str(e)}")
+            QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{e}")
 
-    def show_table(self, df):
-        self.table.setRowCount(0)
-        for i, row in df.iterrows():
-            self.table.insertRow(i)
-            self.table.setItem(i, 0, QTableWidgetItem(str(row["OgrenciNo"])))
-            self.table.setItem(i, 1, QTableWidgetItem(row["AdSoyad"]))
-            self.table.setItem(i, 2, QTableWidgetItem(str(row["Sinif"])))
-            self.table.setItem(i, 3, QTableWidgetItem(str(row["DersKodu"])))
+    # ------------------ VERİTABANINA KAYDET ------------------
+    def save_to_db(self):
+        if self.df is None or self.df.empty:
+            QMessageBox.warning(self, "Uyarı", "Kaydedilecek veri yok!")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+
+            added, skipped = 0, 0
+            for _, row in self.df.iterrows():
+                ogr_no = str(row["OgrenciNo"]).strip()
+                ders_kodu = str(row["DersKodu"]).strip()
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM Ogrenci_Ders_Kayitlari 
+                    WHERE ogrenci_no=? AND ders_kodu=? AND bolum_id=?
+                """, (ogr_no, ders_kodu, self.bolum_id))
+                if cur.fetchone()[0] > 0:
+                    skipped += 1
+                    continue
+
+                cur.execute("""
+                    INSERT INTO Ogrenci_Ders_Kayitlari 
+                    (ogrenci_no, ad_soyad, sinif, ders_kodu, bolum_id)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    ogr_no,
+                    str(row["AdSoyad"]),
+                    str(row["Sinif"]),
+                    ders_kodu,
+                    self.bolum_id
+                ))
+                added += 1
+
+            conn.commit()
+            QMessageBox.information(self, "Başarılı",
+                f"{added} öğrenci kaydı eklendi.\n{skipped} kayıt zaten mevcuttu.")
+
+            self.save_btn.setEnabled(False)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Kayıt sırasında hata oluştu:\n{e}")
+
+    # ------------------ ÖĞRENCİ ARA ------------------
+    def search_student(self):
+        ogr_no = self.search_input.text().strip()
+        if not ogr_no:
+            QMessageBox.warning(self, "Uyarı", "Lütfen bir öğrenci numarası girin.")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ogrenci_no, ad_soyad, sinif, ders_kodu
+                FROM Ogrenci_Ders_Kayitlari
+                WHERE ogrenci_no=? AND bolum_id=?
+            """, (ogr_no, self.bolum_id))
+            rows = cur.fetchall()
+
+            self.table.setRowCount(0)
+            if not rows:
+                QMessageBox.information(self, "Bilgi", "Bu öğrenciye ait kayıt bulunamadı.")
+                return
+
+            for i, row in enumerate(rows):
+                self.table.insertRow(i)
+                for j, val in enumerate(row):
+                    self.table.setItem(i, j, QTableWidgetItem(str(val)))
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", str(e))

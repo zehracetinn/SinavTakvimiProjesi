@@ -95,15 +95,21 @@ class MainWindow(QWidget):
                 QMessageBox.critical(self, "Hata", f"Bölümler ekranı açılırken hata oluştu:\n{str(e)}")
 
     def open_derslik_panel(self):
-        
-        from derslik_window import DerslikWindow
-        self.derslik_window = DerslikWindow(self.bolum_id)
-        self.derslik_window.show()
+        try:
+            from derslik_window import DerslikWindow
+            self.derslik_window = DerslikWindow(self.bolum_id)
+            self.derslik_window.show()
+        except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Derslik paneli açılırken hata oluştu:\n{str(e)}")
+
 
     def open_ders_panel(self):
-        from ders_yukle_window import DersYukleWindow
-        self.ders_window = DersYukleWindow(self.bolum_id)
-        self.ders_window.show()
+        try:
+            from ders_yukle_window import DersYukleWindow
+            self.ders_window = DersYukleWindow(self.bolum_id)
+            self.ders_window.show()
+        except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Ders paneli açılırken hata oluştu:\n{str(e)}")
 
     def open_ogrenci_panel(self):
         try:
