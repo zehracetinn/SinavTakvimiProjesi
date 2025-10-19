@@ -1,14 +1,19 @@
 import pandas as pd
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
-    QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit, QHBoxLayout
+    QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView,
+    QLineEdit, QHBoxLayout
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from database_helper import DatabaseHelper
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
+
+
 
 class OgrenciYukleWindow(QWidget):
-    data_loaded = pyqtSignal()  # 📢 Excel başarıyla yüklendiğinde sinyal 
+    # ✅ Excel başarıyla yüklendiğinde ana pencereye sinyal gönderir
+    data_loaded = pyqtSignal()
+
     def __init__(self, bolum_id):
         super().__init__()
         self.bolum_id = bolum_id
@@ -17,8 +22,8 @@ class OgrenciYukleWindow(QWidget):
         self.df = None
         self.setup_ui()
 
+    # ------------------ ARAYÜZ ------------------
     def setup_ui(self):
-        # ---- GENEL ARAYÜZ STİLİ ----
         self.setStyleSheet("""
             QWidget {
                 background-color: #f4f6f4;
@@ -40,26 +45,14 @@ class OgrenciYukleWindow(QWidget):
                 border: none;
             }
 
-            QPushButton#upload {
-                background-color: #007bff;
-            }
-            QPushButton#upload:hover {
-                background-color: #1a8cff;
-            }
+            QPushButton#upload { background-color: #007bff; }
+            QPushButton#upload:hover { background-color: #1a8cff; }
 
-            QPushButton#save {
-                background-color: #00b050;
-            }
-            QPushButton#save:hover {
-                background-color: #00cc5c;
-            }
+            QPushButton#save { background-color: #00b050; }
+            QPushButton#save:hover { background-color: #00cc5c; }
 
-            QPushButton#search {
-                background-color: #f57c00;
-            }
-            QPushButton#search:hover {
-                background-color: #ffa31a;
-            }
+            QPushButton#search { background-color: #f57c00; }
+            QPushButton#search:hover { background-color: #ffa31a; }
 
             QLineEdit {
                 border: 2px solid #007b5e;
@@ -67,9 +60,7 @@ class OgrenciYukleWindow(QWidget):
                 padding: 6px;
                 background-color: white;
                 font-size: 13px;
-                git add .
-color: black;
-
+                color: black;
             }
 
             QTableWidget {
@@ -88,7 +79,7 @@ color: black;
             }
         """)
 
-        # ---- BAŞLIK ALANI ----
+        # Başlık
         title = QLabel("🎓 Öğrenci Listesi Yükleme ve Görüntüleme")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("""
@@ -103,17 +94,18 @@ color: black;
             }
         """)
 
-        # ---- BUTONLAR ----
+        # Excel yükleme butonu
         btn_upload = QPushButton("📂 Excel Dosyası Seç")
         btn_upload.setObjectName("upload")
         btn_upload.clicked.connect(self.load_excel)
 
+        # Kaydet butonu
         self.save_btn = QPushButton("💾 Veritabanına Kaydet")
         self.save_btn.setObjectName("save")
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_to_db)
 
-        # ---- ARAMA ALANI ----
+        # Arama alanı
         search_label = QLabel("🔍 Öğrenci No:")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Öğrenci numarasını girin...")
@@ -126,14 +118,14 @@ color: black;
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(btn_search)
 
-        # ---- TABLO ----
+        # Tablo
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad", "Sınıf", "Ders Kodu"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
 
-        # ---- DÜZEN ----
+        # Ana düzen
         layout = QVBoxLayout()
         layout.addWidget(title)
         layout.addWidget(btn_upload)
@@ -144,7 +136,9 @@ color: black;
 
     # ------------------ EXCEL YÜKLE ------------------
     def load_excel(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)"
+        )
         if not file_path:
             return
 
@@ -165,8 +159,7 @@ color: black;
             self.save_btn.setEnabled(True)
 
             QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
-            self.data_loaded.emit()
-
+            self.data_loaded.emit()  # ✅ sinyal gönderiliyor
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{e}")
@@ -211,17 +204,14 @@ color: black;
             conn.commit()
             QMessageBox.information(self, "Başarılı",
                 f"{added} öğrenci kaydı eklendi.\n{skipped} kayıt zaten mevcuttu.")
-
             self.save_btn.setEnabled(False)
-            QMessageBox.information(self, "Başarılı", f"{added} öğrenci kaydı eklendi.\n{skipped} kayıt zaten mevcuttu.")
+            self.data_loaded.emit()
 
-# Menüleri aktif etmek için MainWindow'a sinyal gönder
-            self.parent().enable_menus_after_excel()        
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Kayıt sırasında hata oluştu:\n{e}")
 
-    # ------------------ ÖĞRENCİ ARA ------------------
+    # ------------------ ÖĞRENCİ ARAMA ------------------
     def search_student(self):
         ogr_no = self.search_input.text().strip()
         if not ogr_no:

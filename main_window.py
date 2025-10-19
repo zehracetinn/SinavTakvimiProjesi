@@ -51,16 +51,25 @@ class MainWindow(QWidget):
             vbox.addWidget(self.create_button("🏢 Derslik Yönetimi", self.open_derslik_panel))
             vbox.addWidget(self.create_button("📘 Ders Listesi Yükle", self.open_ders_panel))
             vbox.addWidget(self.create_button("🎓 Öğrenci Listesi Yükle", self.open_ogrenci_panel))
+
+            # 🟢 Yeni Menü Butonları (başlangıçta devre dışı)
+            self.ogrenci_listesi_button = self.create_button("👩‍🎓 Öğrenci Listesi Görüntüle", self.open_ogrenci_listesi_panel)
+            self.ders_listesi_button = self.create_button("📖 Ders Listesi Görüntüle", self.open_ders_listesi_panel)
+            self.ogrenci_listesi_button.setEnabled(False)
+            self.ders_listesi_button.setEnabled(False)
+            vbox.addWidget(self.ogrenci_listesi_button)
+            vbox.addWidget(self.ders_listesi_button)
+
             vbox.addWidget(self.create_button("🗓️ Sınav Programı Oluştur", self.open_sinav_panel))
             vbox.addWidget(self.create_button("🪑 Oturma Planı", self.open_oturma_plan_panel))
 
-
+        # buradan SONRA gelen kısım (aşağıdakiler) kalacak 👇
         vbox.addStretch()
         vbox.addWidget(btn_logout)
         vbox.setSpacing(10)
         vbox.setContentsMargins(40, 20, 40, 20)
-
         self.setLayout(vbox)
+
 
     def create_button(self, text, func):
         btn = QPushButton(text)
@@ -113,11 +122,29 @@ class MainWindow(QWidget):
 
     def open_ogrenci_panel(self):
         try:
-            from OgrenciYukleWindow import OgrenciYukleWindow
+            from ogrenci_yukle_window import OgrenciYukleWindow
+
             self.ogrenci_window = OgrenciYukleWindow(self.bolum_id)
+
+        # 💡 Excel başarıyla yüklendiğinde sinyal gönderir
+            self.ogrenci_window.data_loaded.connect(self.enable_menus_after_excel)
+
             self.ogrenci_window.show()
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Öğrenci yükleme ekranı açılırken hata oluştu:\n{str(e)}")
+
+
+
+
+    def open_ders_listesi_panel(self):
+        try:
+            from ders_listesi_window import DersListesiWindow
+            self.ders_listesi_window = DersListesiWindow(self.bolum_id)
+            self.ders_listesi_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Ders Listesi ekranı açılırken hata oluştu:\n{str(e)}")
+
+
 
     def open_sinav_panel(self):
         try:
@@ -135,6 +162,17 @@ class MainWindow(QWidget):
             self.oturma_window.show()
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Oturma Planı ekranı açılırken hata oluştu:\n{str(e)}")
+
+
+
+    def open_ogrenci_listesi_panel(self):
+        try:
+            from ogrenci_listesi_window import OgrenciListesiWindow
+            self.ogrenci_listesi_window = OgrenciListesiWindow(self.bolum_id)
+            self.ogrenci_listesi_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Öğrenci Listesi ekranı açılırken hata oluştu:\n{str(e)}")
+
         
 
 
@@ -142,6 +180,24 @@ class MainWindow(QWidget):
     def logout(self):
         QMessageBox.information(self, "Çıkış", "Oturum sonlandırıldı.")
         self.close()
+    def enable_menus_after_excel(self):
+        try:
+            # 🎯 Öğrenci ve Ders Listesi menülerini aktif et
+            self.ogrenci_listesi_button.setEnabled(True)
+            self.ders_listesi_button.setEnabled(True)
+
+            QMessageBox.information(
+                self,
+                "Bilgi",
+                "🎉 Excel başarıyla yüklendi! Artık Öğrenci ve Ders Listesi menüleri aktif."
+            )
+            self.open_ogrenci_listesi_panel()
+            self.open_ders_listesi_panel()
+
+
+        except Exception as e:
+            QMessageBox.warning(self, "Uyarı", f"Menüler aktif edilirken hata oluştu:\n{e}")
+
     def open_ders_yukle_window(self):
         from ders_yukle_window import DersYukleWindow
         # Admin kullanıcıları için örnek bolum_id = 1
@@ -150,9 +206,10 @@ class MainWindow(QWidget):
 
 
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    # Test için sahte giriş:
-    window = MainWindow("Bölüm Koordinatörü", 1)
-    window.show()
-    sys.exit(app.exec())
+    if __name__ == "__main__":
+        app = QApplication(sys.argv)
+        # Test için sahte giriş:
+        window = MainWindow("Bölüm Koordinatörü", 1)
+        window.show()
+        sys.exit(app.exec())
+  
