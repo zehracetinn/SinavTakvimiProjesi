@@ -38,7 +38,6 @@ class BolumWindow(QWidget):
         super().paintEvent(event)
 
     def setup_ui(self):
-        # --- Genel Stil ---
         self.setStyleSheet("""
             QWidget {
                 font-family: 'Segoe UI', Arial, sans-serif;
@@ -89,7 +88,6 @@ class BolumWindow(QWidget):
             }
         """)
 
-        # --- Başlık ---
         title = QLabel("🏫 Bölüm Yönetimi")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("""
@@ -102,32 +100,21 @@ class BolumWindow(QWidget):
             margin-bottom: 10px;
         """)
 
-        # --- Giriş alanı ve butonlar ---
         lbl_name = QLabel("Bölüm Adı:")
         self.txt_name = QLineEdit()
         self.txt_name.setPlaceholderText("Örn: Bilgisayar Mühendisliği")
 
         btn_add = QPushButton("Bölüm Ekle")
         btn_add.setStyleSheet("""
-            QPushButton {
-                background-color: #00823b;
-                color: white;
-            }
-            QPushButton:hover {
-                background-color: #006b30;
-            }
+            QPushButton { background-color: #00823b; color: white; }
+            QPushButton:hover { background-color: #006b30; }
         """)
         btn_add.clicked.connect(self.add_department)
 
         btn_delete = QPushButton("Seçili Bölümü Sil")
         btn_delete.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
+            QPushButton { background-color: #e74c3c; color: white; }
+            QPushButton:hover { background-color: #c0392b; }
         """)
         btn_delete.clicked.connect(self.delete_department)
 
@@ -137,15 +124,12 @@ class BolumWindow(QWidget):
         self.tbl.setHorizontalHeaderLabels(["ID", "Bölüm Adı"])
         self.tbl.setColumnWidth(1, 320)
 
-        # --- Düzen ---
         hbox = QHBoxLayout()
-        hbox.setSpacing(10)
         hbox.addWidget(lbl_name)
         hbox.addWidget(self.txt_name)
         hbox.addWidget(btn_add)
 
         vbox = QVBoxLayout()
-        vbox.setSpacing(10)
         vbox.addWidget(title)
         vbox.addLayout(hbox)
         vbox.addWidget(self.tbl)
@@ -156,7 +140,7 @@ class BolumWindow(QWidget):
     # --- Veritabanı işlemleri ---
     def load_departments(self):
         self.tbl.setRowCount(0)
-        self.cur.execute("SELECT id, bolum_adi FROM Bolumler")
+        self.cur.execute("SELECT bolum_id, bolum_adi FROM Bolumler")
         for row_idx, row_data in enumerate(self.cur.fetchall()):
             self.tbl.insertRow(row_idx)
             for col_idx, col_data in enumerate(row_data):
@@ -182,7 +166,7 @@ class BolumWindow(QWidget):
             return
 
         bolum_id = self.tbl.item(selected, 0).text()
-        self.cur.execute("DELETE FROM Bolumler WHERE id=?", (bolum_id,))
+        self.cur.execute("DELETE FROM Bolumler WHERE bolum_id=?", (bolum_id,))
         self.conn.commit()
         QMessageBox.information(self, "Silindi", "Bölüm silindi.")
         self.load_departments()

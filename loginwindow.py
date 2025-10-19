@@ -1,7 +1,6 @@
 import sys
 
 
-from PyQt6.QtCore import Qt
 
 import sqlite3
 from PyQt6.QtWidgets import (

@@ -22,7 +22,7 @@ class KullaniciWindow(QWidget):
         self.setup_ui()
         self.load_users()
 
-    # 🔹 Arka planı çizmek için paintEvent override
+    # 🔹 Arka plan resmi
     def paintEvent(self, event):
         painter = QPainter(self)
         pixmap = QPixmap(self.bg_path)
@@ -32,60 +32,36 @@ class KullaniciWindow(QWidget):
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation
             )
-            painter.setOpacity(0.35)  # 🔹 saydamlık (%35)
+            painter.setOpacity(0.35)
             painter.drawPixmap(0, 0, scaled)
         painter.setOpacity(1.0)
         super().paintEvent(event)
 
     def setup_ui(self):
-        # --- Genel Stil ---
         self.setStyleSheet("""
-            QWidget {
-                font-family: 'Segoe UI', Arial, sans-serif;
-                color: black;
-            }
+            QWidget { font-family: 'Segoe UI', Arial, sans-serif; color: black; }
             QLabel {
-                color: black;
-                font-size: 15px;
-                font-weight: 600;
+                color: black; font-size: 15px; font-weight: 600;
                 background-color: rgba(255, 255, 255, 180);
-                border-radius: 4px;
-                padding: 2px 4px;
+                border-radius: 4px; padding: 2px 4px;
             }
             QLineEdit, QComboBox {
-                border: 2px solid #007b5e;
-                border-radius: 6px;
-                padding: 6px;
-                background-color: rgba(255, 255, 255, 220);
-                font-size: 14px;
-                color: black;
+                border: 2px solid #007b5e; border-radius: 6px; padding: 6px;
+                background-color: rgba(255, 255, 255, 220); font-size: 14px; color: black;
             }
             QLineEdit:focus, QComboBox:focus {
-                border: 2px solid #005b44;
-                background-color: rgba(255, 255, 255, 240);
+                border: 2px solid #005b44; background-color: rgba(255, 255, 255, 240);
             }
-            QPushButton {
-                border-radius: 6px;
-                padding: 8px;
-                font-weight: bold;
-                font-size: 14px;
-            }
+            QPushButton { border-radius: 6px; padding: 8px; font-weight: bold; font-size: 14px; }
             QTableWidget {
                 background-color: rgba(255, 255, 255, 230);
-                color: black;
-                border: 2px solid #007b5e;
-                border-radius: 6px;
-                gridline-color: #00823b;
-                selection-background-color: #c8f7c5;
-                selection-color: black;
-                font-size: 13px;
+                color: black; border: 2px solid #007b5e; border-radius: 6px;
+                gridline-color: #00823b; selection-background-color: #c8f7c5;
+                selection-color: black; font-size: 13px;
             }
             QHeaderView::section {
-                background-color: #00823b;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
+                background-color: #00823b; color: white; padding: 6px;
+                font-weight: bold; border: none;
             }
         """)
 
@@ -94,12 +70,8 @@ class KullaniciWindow(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("""
             background-color: rgba(0, 130, 59, 220);
-            color: white;
-            font-size: 18px;
-            font-weight: bold;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 10px;
+            color: white; font-size: 18px; font-weight: bold;
+            padding: 10px; border-radius: 4px; margin-bottom: 10px;
         """)
 
         # --- Kullanıcı ekleme alanı ---
@@ -119,13 +91,8 @@ class KullaniciWindow(QWidget):
 
         btn_add = QPushButton("Kullanıcı Ekle")
         btn_add.setStyleSheet("""
-            QPushButton {
-                background-color: #00823b;
-                color: white;
-            }
-            QPushButton:hover {
-                background-color: #006b30;
-            }
+            QPushButton { background-color: #00823b; color: white; }
+            QPushButton:hover { background-color: #006b30; }
         """)
         btn_add.clicked.connect(self.add_user)
 
@@ -137,13 +104,8 @@ class KullaniciWindow(QWidget):
 
         btn_delete = QPushButton("Seçili Kullanıcıyı Sil")
         btn_delete.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
+            QPushButton { background-color: #e74c3c; color: white; }
+            QPushButton:hover { background-color: #c0392b; }
         """)
         btn_delete.clicked.connect(self.delete_user)
 
@@ -178,9 +140,9 @@ class KullaniciWindow(QWidget):
     def load_users(self):
         self.tbl_users.setRowCount(0)
         query = """
-            SELECT K.id, K.eposta, K.rol, B.bolum_adi 
-            FROM Kullanicilar K 
-            LEFT JOIN Bolumler B ON K.bolum_id = B.id
+            SELECT K.kullanici_id, K.eposta, K.rol, B.bolum_adi
+            FROM Kullanicilar K
+            LEFT JOIN Bolumler B ON K.bolum_id = B.bolum_id
         """
         self.cur.execute(query)
         for row_idx, row_data in enumerate(self.cur.fetchall()):
@@ -191,23 +153,51 @@ class KullaniciWindow(QWidget):
                 self.tbl_users.setItem(row_idx, col_idx, item)
 
     def add_user(self):
-        email = self.txt_email.text().strip()
-        sifre = self.txt_pass.text().strip()
-        rol = self.cmb_role.currentText()
-        bolum_adi = self.cmb_bolum.currentText()
+        try:
+            email = self.txt_email.text().strip()
+            sifre = self.txt_pass.text().strip()
+            rol = self.cmb_role.currentText()
+            bolum_adi = self.cmb_bolum.currentText()
 
-        if not email or not sifre:
-            QMessageBox.warning(self, "Uyarı", "Lütfen e-posta ve şifre giriniz.")
-            return
+            if not email or not sifre:
+                QMessageBox.warning(self, "Uyarı", "Lütfen e-posta ve şifre giriniz.")
+                return
 
-        self.cur.execute("SELECT id FROM Bolumler WHERE bolum_adi=?", (bolum_adi,))
-        bolum_id = self.cur.fetchone()[0]
+            # Bölüm ID'sini al
+            self.cur.execute("SELECT bolum_id FROM Bolumler WHERE bolum_adi=?", (bolum_adi,))
+            result = self.cur.fetchone()
 
-        self.cur.execute("INSERT INTO Kullanicilar (eposta, sifre, rol, bolum_id) VALUES (?, ?, ?, ?)",
-                         (email, sifre, rol, bolum_id))
-        self.conn.commit()
-        QMessageBox.information(self, "Başarılı", "Kullanıcı eklendi.")
-        self.load_users()
+            if result is None:
+                QMessageBox.critical(self, "Hata", f"Bölüm '{bolum_adi}' bulunamadı!")
+                return
+
+            bolum_id = result[0]
+
+            # E-posta zaten var mı kontrol et
+            self.cur.execute("SELECT COUNT(*) FROM Kullanicilar WHERE eposta=?", (email,))
+            if self.cur.fetchone()[0] > 0:
+                QMessageBox.warning(self, "Uyarı", "Bu e-posta adresi zaten kayıtlı!")
+                return
+
+            # Yeni kullanıcıyı ekle
+            self.cur.execute("""
+                INSERT INTO Kullanicilar (eposta, sifre, rol, bolum_id)
+                VALUES (?, ?, ?, ?)
+            """, (email, sifre, rol, bolum_id))
+
+            self.conn.commit()
+            QMessageBox.information(self, "Başarılı", "Kullanıcı başarıyla eklendi.")
+            self.load_users()
+
+            # Alanları temizle
+            self.txt_email.clear()
+            self.txt_pass.clear()
+            self.cmb_role.setCurrentIndex(0)
+
+        except sqlite3.Error as e:
+            QMessageBox.critical(self, "Veritabanı Hatası", f"SQLite hatası oluştu:\n{e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Beklenmeyen bir hata oluştu:\n{e}")
 
     def delete_user(self):
         selected = self.tbl_users.currentRow()
@@ -216,7 +206,7 @@ class KullaniciWindow(QWidget):
             return
 
         user_id = self.tbl_users.item(selected, 0).text()
-        self.cur.execute("DELETE FROM Kullanicilar WHERE id=?", (user_id,))
+        self.cur.execute("DELETE FROM Kullanicilar WHERE kullanici_id=?", (user_id,))
         self.conn.commit()
         QMessageBox.information(self, "Silindi", "Kullanıcı silindi.")
         self.load_users()

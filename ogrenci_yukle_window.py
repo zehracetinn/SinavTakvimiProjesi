@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPalette
 from database_helper import DatabaseHelper
+from unidecode import unidecode
+
 
 
 class OgrenciYukleWindow(QWidget):
@@ -146,6 +148,8 @@ class OgrenciYukleWindow(QWidget):
         self.setLayout(layout)
 
     # ------------------ EXCEL YÜKLE ------------------
+
+
     def load_excel(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)"
@@ -155,17 +159,39 @@ class OgrenciYukleWindow(QWidget):
 
         try:
             df = pd.read_excel(file_path)
+
+            # 🔹 Türkçe karakterleri temizle (unidecode ile)
+            df.columns = [
+                unidecode(str(c)).strip().replace(" ", "").replace("ı", "i").replace("İ", "I")
+                for c in df.columns
+            ]
+
+            # 🔹 Sütunları yeniden adlandır
+            df.rename(columns={
+                "OgrenciNo": "OgrenciNo",
+                "OgrenciNumara": "OgrenciNo",
+                "OgrenciNumarasi": "OgrenciNo",
+                "Ogrenci": "OgrenciNo",
+                "AdSoyad": "AdSoyad",
+                "Sinif": "Sinif",
+                "Ders": "DersKodu"
+            }, inplace=True)
+
             expected_cols = ["OgrenciNo", "AdSoyad", "Sinif", "DersKodu"]
             if not all(col in df.columns for col in expected_cols):
-                QMessageBox.critical(self, "Hata", f"Excel formatı hatalı!\nBeklenen sütunlar:\n{expected_cols}")
+                QMessageBox.critical(
+                    self, "Hata",
+                    f"Excel formatı hatalı!\nBeklenen sütunlar:\n{expected_cols}\n\nBulunan sütunlar:\n{df.columns.tolist()}"
+                )
                 return
 
+            # 🔹 Tabloya yükle
             self.df = df.fillna("")
             self.table.setRowCount(len(self.df))
             for i, row in self.df.iterrows():
-                for j, col in enumerate(["OgrenciNo", "AdSoyad", "Sinif", "DersKodu"]):
+                for j, col in enumerate(expected_cols):
                     item = QTableWidgetItem(str(row[col]))
-                    item.setForeground(QColor(0, 0, 0))  # 🖤 Hücre metinleri siyah
+                    item.setForeground(QColor(0, 0, 0))
                     self.table.setItem(i, j, item)
 
             self.save_btn.setEnabled(True)
@@ -174,6 +200,8 @@ class OgrenciYukleWindow(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{e}")
+
+
 
     # ------------------ VERİTABANINA KAYDET ------------------
     def save_to_db(self):

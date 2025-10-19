@@ -18,16 +18,13 @@ class DersYukleWindow(QWidget):
         self.df = None
         self.setup_ui()
 
+    # ---------------- UI ----------------
     def setup_ui(self):
         try:
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            # ✅ Sorunun kaynağı burasıydı. Doğru dosya adını ('kou.jpg') kullanıyoruz.
             image_path = os.path.join(base_dir, 'kou.jpg').replace('\\', '/')
         except NameError:
             image_path = 'kou.jpg'
-
-        # Hata ayıklama için bu satırı bırakıyoruz. Terminalde yolu kontrol edebilirsiniz.
-        print(f"Arka plan için aranan resim yolu: {image_path}")
 
         self.setStyleSheet(f"""
             DersYukleWindow {{
@@ -82,9 +79,9 @@ class DersYukleWindow(QWidget):
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["Ders Kodu", "Ders Adı", "Öğretim Üyesi", "Sınıf", "Yapı"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-
-        self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+
         self.table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #cccccc;
@@ -98,11 +95,6 @@ class DersYukleWindow(QWidget):
                 border: 1px solid #4CAF50;
                 font-weight: bold;
             }
-            QTableWidget::item {
-                padding-left: 5px;
-                padding-right: 5px;
-                background-color: transparent;
-            }
             QTableWidget::item:alternate {
                 background-color: rgba(230, 230, 230, 0.8);
             }
@@ -115,34 +107,60 @@ class DersYukleWindow(QWidget):
         layout.addWidget(self.table)
         self.setLayout(layout)
 
+    # ---------------- EXCEL OKUMA ----------------
     def load_excel(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)"
+        )
         if not file_path:
             return
 
         try:
-            df = pd.read_excel(file_path)
-            expected_cols = ["Ders Kodu", "Ders Adı", "Öğretim Üyesi", "Sınıf", "Yapı"]
+            df_raw = pd.read_excel(file_path, header=None)
+            data = []
+            current_class = None
 
-            if not all(col in df.columns for col in expected_cols):
-                QMessageBox.critical(self, "Hata", f"Excel formatı hatalı!\nBeklenen sütunlar:\n{expected_cols}")
+            for i, row in df_raw.iterrows():
+                first_cell = str(row[0]).strip().lower() if pd.notna(row[0]) else ""
+
+                # “1. Sınıf”, “2. Sınıf” gibi satırları algıla
+                if "sınıf" in first_cell:
+                    current_class = first_cell.replace(".", "").replace("sınıf", "").strip()
+                    if not current_class.isdigit():
+                        current_class = ''.join([c for c in current_class if c.isdigit()])
+                    if not current_class:
+                        current_class = "1"
+                    continue
+
+                # Gerçek başlık satırını atla
+                if "ders kodu" in first_cell or "dersin" in str(row[1]).lower():
+                    continue
+
+                # Boş satırları geç
+                if pd.isna(row[0]) or pd.isna(row[1]) or pd.isna(row[2]):
+                    continue
+
+                data.append({
+                    "Ders Kodu": str(row[0]).strip(),
+                    "Ders Adı": str(row[1]).strip(),
+                    "Öğretim Üyesi": str(row[2]).strip(),
+                    "Sınıf": current_class if current_class else "1",
+                    "Yapı": "Zorunlu"  # varsayılan değer
+                })
+
+            if not data:
+                QMessageBox.critical(self, "Hata", "Hiç geçerli ders satırı bulunamadı!")
                 return
 
-            for idx, yapi in enumerate(df["Yapı"]):
-                if str(yapi).strip().lower() not in ["zorunlu", "seçmeli"]:
-                    QMessageBox.warning(self, "Uyarı", f"{idx+2}. satırda geçersiz yapı değeri bulundu: '{yapi}'.\n"
-                                        "Yalnızca 'Zorunlu' veya 'Seçmeli' olmalıdır.")
-                    return
-
-            self.df = df.fillna("")
+            self.df = pd.DataFrame(data)
             self.table.setRowCount(len(self.df))
 
             for i, row in self.df.iterrows():
-                self.table.setItem(i, 0, QTableWidgetItem(str(row["Ders Kodu"])))
-                self.table.setItem(i, 1, QTableWidgetItem(str(row["Ders Adı"])))
-                self.table.setItem(i, 2, QTableWidgetItem(str(row["Öğretim Üyesi"])))
+                self.table.setItem(i, 0, QTableWidgetItem(row["Ders Kodu"]))
+                self.table.setItem(i, 1, QTableWidgetItem(row["Ders Adı"]))
+                self.table.setItem(i, 2, QTableWidgetItem(row["Öğretim Üyesi"]))
                 self.table.setItem(i, 3, QTableWidgetItem(str(row["Sınıf"])))
-                self.table.setItem(i, 4, QTableWidgetItem(str(row["Yapı"])))
+                self.table.setItem(i, 4, QTableWidgetItem(row["Yapı"]))
 
             self.save_btn.setEnabled(True)
             QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
@@ -150,6 +168,7 @@ class DersYukleWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{str(e)}")
 
+    # ---------------- VERİTABANINA KAYDETME ----------------
     def save_to_db(self):
         if self.df is None or self.df.empty:
             QMessageBox.warning(self, "Uyarı", "Kaydedilecek veri yok!")
@@ -158,12 +177,14 @@ class DersYukleWindow(QWidget):
         try:
             conn = DatabaseHelper.get_connection()
             cursor = conn.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
 
             added, skipped = 0, 0
             for _, row in self.df.iterrows():
                 ders_kodu = str(row["Ders Kodu"]).strip()
-                cursor.execute("SELECT COUNT(*) FROM Dersler WHERE ders_kodu=? AND bolum_id=?", (ders_kodu, self.bolum_id))
+                cursor.execute(
+                    "SELECT COUNT(*) FROM Dersler WHERE ders_kodu=? AND bolum_id=?",
+                    (ders_kodu, self.bolum_id)
+                )
                 if cursor.fetchone()[0] > 0:
                     skipped += 1
                     continue
@@ -181,9 +202,10 @@ class DersYukleWindow(QWidget):
                 ))
                 added += 1
 
-            conn.commit()
+            conn.commit()  # autocommit modda olsa da güvenli
             QMessageBox.information(self, "Başarılı", f"{added} ders eklendi, {skipped} atlandı.")
             self.save_btn.setEnabled(False)
 
         except Exception as e:
+            conn.rollback()
             QMessageBox.critical(self, "Hata", str(e))
