@@ -5,14 +5,12 @@ from PyQt6.QtWidgets import (
     QLineEdit, QHBoxLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QPalette
 from database_helper import DatabaseHelper
-from PyQt6.QtCore import Qt, pyqtSignal
-
 
 
 class OgrenciYukleWindow(QWidget):
-    # ✅ Excel başarıyla yüklendiğinde ana pencereye sinyal gönderir
-    data_loaded = pyqtSignal()
+    data_loaded = pyqtSignal()  # ✅ Excel başarıyla yüklendiğinde ana pencereye sinyal gönderir
 
     def __init__(self, bolum_id):
         super().__init__()
@@ -63,11 +61,14 @@ class OgrenciYukleWindow(QWidget):
                 color: black;
             }
 
-            QTableWidget {
+            QTableWidget, QTableView, QAbstractItemView {
                 border: 1px solid #c8c8c8;
                 background-color: white;
                 alternate-background-color: #f2f2f2;
+                color: black;
                 font-size: 13px;
+                selection-background-color: #16a085;
+                selection-color: white;
             }
 
             QHeaderView::section {
@@ -125,6 +126,16 @@ class OgrenciYukleWindow(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
 
+        # 🎨 Renklerin beyaz kalmaması için palet uygulandı
+        palette = self.table.palette()
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(242, 242, 242))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(22, 160, 133))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        self.table.setPalette(palette)
+
         # Ana düzen
         layout = QVBoxLayout()
         layout.addWidget(title)
@@ -152,14 +163,14 @@ class OgrenciYukleWindow(QWidget):
             self.df = df.fillna("")
             self.table.setRowCount(len(self.df))
             for i, row in self.df.iterrows():
-                self.table.setItem(i, 0, QTableWidgetItem(str(row["OgrenciNo"])))
-                self.table.setItem(i, 1, QTableWidgetItem(str(row["AdSoyad"])))
-                self.table.setItem(i, 2, QTableWidgetItem(str(row["Sinif"])))
-                self.table.setItem(i, 3, QTableWidgetItem(str(row["DersKodu"])))
-            self.save_btn.setEnabled(True)
+                for j, col in enumerate(["OgrenciNo", "AdSoyad", "Sinif", "DersKodu"]):
+                    item = QTableWidgetItem(str(row[col]))
+                    item.setForeground(QColor(0, 0, 0))  # 🖤 Hücre metinleri siyah
+                    self.table.setItem(i, j, item)
 
+            self.save_btn.setEnabled(True)
             QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
-            self.data_loaded.emit()  # ✅ sinyal gönderiliyor
+            self.data_loaded.emit()
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{e}")
@@ -207,7 +218,6 @@ class OgrenciYukleWindow(QWidget):
             self.save_btn.setEnabled(False)
             self.data_loaded.emit()
 
-
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Kayıt sırasında hata oluştu:\n{e}")
 
@@ -236,7 +246,9 @@ class OgrenciYukleWindow(QWidget):
             for i, row in enumerate(rows):
                 self.table.insertRow(i)
                 for j, val in enumerate(row):
-                    self.table.setItem(i, j, QTableWidgetItem(str(val)))
+                    item = QTableWidgetItem(str(val))
+                    item.setForeground(QColor(0, 0, 0))  # 🖤 Hücre metinleri siyah
+                    self.table.setItem(i, j, item)
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", str(e))
