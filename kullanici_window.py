@@ -14,7 +14,7 @@ class KullaniciWindow(QWidget):
         self.setGeometry(400, 200, 700, 520)
 
         # 🔹 Arka plan görseli yolu
-        self.bg_path = "/Users/USER/Desktop/SinavTakvimiProjesi/kou.jpg"
+        self.bg_path =" C:\\Users\\PC\\Documents\\GitHub\\SinavTakvimiProjesi\\kou.jpg"
 
         self.conn = sqlite3.connect("sinav_takvimi.db")
         self.cur = self.conn.cursor()

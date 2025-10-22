@@ -1,9 +1,12 @@
 # oturma_plan_window.py
 import sqlite3
 import random
+from typing import List, Tuple
+
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton,
-    QComboBox, QMessageBox, QScrollArea, QGridLayout, QFrame
+    QComboBox, QMessageBox, QScrollArea, QGridLayout, QFrame,
+    QTableWidget, QTableWidgetItem, QHeaderView
 )
 from PyQt6.QtCore import Qt
 from reportlab.lib.pagesizes import A4
@@ -11,251 +14,362 @@ from reportlab.pdfgen import canvas
 
 
 class OturmaPlanWindow(QWidget):
-    def __init__(self, bolum_id):
+    def __init__(self, bolum_id: int):
         super().__init__()
         self.bolum_id = bolum_id
         self.setWindowTitle("🪑 Ders Bazlı Oturma Planı")
-        self.resize(900, 650)
-        self.setup_ui()
-        self.load_sinavlar()
-        self.current_plan = []  # (ogr_no, ad, sıra, sütun, koltuk_no)
- 
-    def setup_ui(self):
-        layout = QVBoxLayout()
+        self.resize(1050, 700)
+
+        # (ogr_no, ad_soyad, sira(row), sutun(col), slot(1..n), derslik_adi)
+        self.current_plan: List[Tuple[str, str, int, int, int, str]] = []
+
+        self._setup_ui()
+        self._load_sinavlar()
+
+    # ---------- UI ----------
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
 
         title = QLabel("📘 Ders Bazlı Oturma Planı")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-weight:bold; font-size:18px; margin-bottom:10px;")
-        layout.addWidget(title)
+        root.addWidget(title)
 
-        layout.addWidget(QLabel("Sınav Seç:"))
-        self.sinav_combo = QComboBox()
-        layout.addWidget(self.sinav_combo)
-
-        btn_layout = QHBoxLayout()
-        self.btn_show = QPushButton("📋 Oturma Planını Oluştur")
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Sınav Seç:"))
+        self.cmb_exam = QComboBox()
+        top.addWidget(self.cmb_exam, 1)
+        self.btn_make = QPushButton("📋 Oturma Planını Oluştur")
         self.btn_pdf = QPushButton("📄 PDF Olarak Kaydet")
-        self.btn_show.clicked.connect(self.show_plan)
+        self.btn_make.clicked.connect(self.make_plan)
         self.btn_pdf.clicked.connect(self.export_pdf)
-        btn_layout.addWidget(self.btn_show)
-        btn_layout.addWidget(self.btn_pdf)
-        layout.addLayout(btn_layout)
+        top.addWidget(self.btn_make)
+        top.addWidget(self.btn_pdf)
+        root.addLayout(top)
 
+        mid = QHBoxLayout()
+
+        # Sol: ızgara (derslik yerleşimi)
         self.scroll = QScrollArea()
-        self.container = QWidget()
-        self.grid = QGridLayout()
-        self.container.setLayout(self.grid)
-        self.scroll.setWidget(self.container)
+        self.room_container = QWidget()
+        self.grid = QGridLayout(self.room_container)
+        self.grid.setSpacing(6)
+        self.scroll.setWidget(self.room_container)
         self.scroll.setWidgetResizable(True)
-        layout.addWidget(self.scroll)
+        mid.addWidget(self.scroll, 3)
 
-        self.setLayout(layout)
+        # Sağ: yerleşenlerin listesi
+        right_title = QLabel("Yerleşen Öğrenciler")
+        right_title.setStyleSheet("font-weight:600;")
+        self.tbl = QTableWidget(0, 6)
+        self.tbl.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad", "Derslik", "Sıra", "Sütun", "Slot"])
+        self.tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
-    def load_sinavlar(self):
-        conn = sqlite3.connect("sinav_takvimi.db")
-        c = conn.cursor()
-        c.execute("""
-            SELECT sp.id, d.ders_adi, dl.derslik_adi, sp.tarih, sp.saat
-            FROM SinavProgrami sp
-            LEFT JOIN Dersler d ON sp.ders_id = d.rowid
-            LEFT JOIN Derslikler dl ON sp.derslik_id = dl.rowid
-            WHERE sp.bolum_id=?
-        """, (self.bolum_id,))
+        right = QVBoxLayout()
+        right.addWidget(right_title)
+        right.addWidget(self.tbl, 1)
+        mid.addLayout(right, 2)
 
+        root.addLayout(mid)
 
-        sinavlar = c.fetchall()
-        conn.close()
+    # ---------- DB helpers ----------
+    def _conn(self):
+        return sqlite3.connect("sinav_takvimi.db")
 
-        self.sinav_combo.clear()
-        for s in sinavlar:
-            self.sinav_combo.addItem(f"{s[1]} | {s[2]} | {s[3]} {s[4]}", s[0])
-
-    def show_plan(self):
-        """Seçilen sınava göre oturma planı oluşturur (çakışma + yan yana kontrolü dahil)"""
-        sinav_id = self.sinav_combo.currentData()
-        if not sinav_id:
-            QMessageBox.warning(self, "Uyarı", "Lütfen bir sınav seçiniz.")
-            return
-
-        conn = sqlite3.connect("sinav_takvimi.db")
-        c = conn.cursor()
-
-        # Sınav bilgilerini al
-        c.execute("""
-            SELECT d.ders_adi, dl.derslik_adi, sp.tarih, sp.saat
-            FROM SinavProgrami sp
-            LEFT JOIN Dersler d ON sp.ders_id = d.rowid
-            LEFT JOIN Derslikler dl ON sp.derslik_id = dl.rowid
-            WHERE sp.id=?
-        """, (sinav_id,))
-
-
-        ders, derslik, tarih, saat = c.fetchone()
-
-        # Derslik bilgileri
-        c.execute("SELECT enine_sira, boyuna_sira, sira_yapisi, kapasite FROM Derslikler WHERE sinif_adi=?", (derslik,))
-        derslik_bilgi = c.fetchone()
-        if not derslik_bilgi:
-            QMessageBox.critical(self, "Hata", f"{derslik} için derslik bilgisi eksik!")
-            conn.close()
-            return
-
-        enine, boyuna, sira_yapisi, kapasite = derslik_bilgi
-
-        # Dersi alan öğrenciler
-        c.execute("SELECT id FROM Dersler WHERE ders_adi=?", (ders.split(" - ")[-1],))
-        d_row = c.fetchone()
-        if not d_row:
-            QMessageBox.warning(self, "Uyarı", f"{ders} dersi veritabanında bulunamadı.")
-            conn.close()
-            return
-
-        ders_id = d_row[0]
-
-        # Öğrencileri çek
-        c.execute("""
-            SELECT ogrenci_no, ad_soyad, sinif
-            FROM Ogrenciler
-            WHERE ders_id=?
-            ORDER BY ogrenci_no
-        """, (ders_id,))
-        ogrenciler = c.fetchall()
-
-        toplam_koltuk = enine * boyuna * int(sira_yapisi)
-        if len(ogrenciler) > toplam_koltuk:
-            QMessageBox.warning(
-                self,
-                "Uyarı",
-                f"Sınıf kapasitesi yetersiz! (Kapasite: {toplam_koltuk}, Öğrenci: {len(ogrenciler)})"
-            )
-            ogrenciler = ogrenciler[:toplam_koltuk]
-
-        # 🔍 Çakışma kontrolü
-        cakisan_ogrenciler = []
-        for ogr_no, ad, _ in ogrenciler:
+    def _load_sinavlar(self):
+        """Sınav programındaki sınavları listele (ders + derslik + tarih+saat)."""
+        try:
+            conn = self._conn()
+            c = conn.cursor()
             c.execute("""
-                SELECT sp.ders, sp.tarih, sp.saat 
+                SELECT sp.id, d.ders_kodu, d.ders_adi, dl.derslik_adi,
+                       sp.tarih, sp.saat, sp.ders_id, sp.derslik_id
                 FROM SinavProgrami sp
-                JOIN Dersler d ON sp.ders LIKE '%' || d.ders_adi || '%'
-                JOIN Ogrenciler o ON o.ders_id = d.id
-                WHERE o.ogrenci_no = ? AND sp.id != ?
-            """, (ogr_no, sinav_id))
-            diger_sinavlar = c.fetchall()
-            for diger_ders, diger_tarih, diger_saat in diger_sinavlar:
-                if diger_tarih == tarih and diger_saat == saat:
-                    cakisan_ogrenciler.append((ogr_no, ad, diger_ders))
-
-        if cakisan_ogrenciler:
-            mesaj = "⚠️ Çakışan Öğrenciler:\n\n"
-            for ogr_no, ad, diger_ders in cakisan_ogrenciler:
-                mesaj += f"{ogr_no} - {ad} → aynı anda: {diger_ders}\n"
-            QMessageBox.critical(self, "Ders Çakışması", mesaj)
+                LEFT JOIN Dersler    d  ON sp.ders_id    = d.rowid
+                LEFT JOIN Derslikler dl ON sp.derslik_id = dl.rowid
+                WHERE sp.bolum_id=?
+                ORDER BY sp.tarih, sp.saat
+            """, (self.bolum_id,))
+            rows = c.fetchall()
+        finally:
             conn.close()
-            return
 
-        # 🧩 Yan yana oturmama kontrolü
-        def soyad(ad):
-            return ad.split()[-1].lower() if ad else ""
+        self.cmb_exam.clear()
+        for (sp_id, kod, ad, derslik, tarih, saat, ders_id, derslik_id) in rows:
+            label = f"{(kod or '')} - {(ad or '')} | {(derslik or '?')} | {tarih} {saat}"
+            # data: (sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi)
+            self.cmb_exam.addItem(label, (sp_id, ders_id, derslik_id, tarih, saat, kod, ad, derslik))
 
-        def yan_yana_mi(a, b):
-            if not a or not b:
-                return False
-            return a[2] == b[2] or soyad(a[1]) == soyad(b[1])
-
-        random.shuffle(ogrenciler)
-        for i in range(len(ogrenciler) - 1):
-            if yan_yana_mi(ogrenciler[i], ogrenciler[i + 1]):
-                j = random.randint(0, len(ogrenciler) - 1)
-                ogrenciler[i], ogrenciler[j] = ogrenciler[j], ogrenciler[i]
-
-        sorunlu = []
-        for i in range(len(ogrenciler) - 1):
-            if yan_yana_mi(ogrenciler[i], ogrenciler[i + 1]):
-                sorunlu.append((ogrenciler[i][1], ogrenciler[i + 1][1]))
-
-        if sorunlu:
-            mesaj = "⚠️ Yan Yana Oturma Sorunu:\n\n"
-            for a, b in sorunlu:
-                mesaj += f"{a} ve {b} yan yana oturmayacak şekilde plan oluşturulamadı!\n"
-            QMessageBox.warning(self, "Yerleşim Uyarısı", mesaj)
-
-        # --- Grid oluştur ---
+    # ---------- grid & table temizleme ----------
+    def _clear_grid_and_table(self):
         for i in reversed(range(self.grid.count())):
             item = self.grid.itemAt(i)
-            if item and item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.tbl.setRowCount(0)
 
-        index = 0
-        self.current_plan.clear()
-        for row in range(boyuna):
-            for col in range(enine):
-                masa = QFrame()
-                masa.setFrameShape(QFrame.Shape.Box)
-                masa.setStyleSheet("background-color:#f3f3f3; border:1px solid #aaa;")
-                masa_layout = QHBoxLayout()
+    # ---------- PLAN OLUŞTUR ----------
+    def make_plan(self):
+        try:
+            data = self.cmb_exam.currentData()
+            if not data:
+                QMessageBox.warning(self, "Uyarı", "Lütfen bir sınav seçiniz.")
+                return
 
-                for s in range(int(sira_yapisi)):
-                    slot = QVBoxLayout()
-                    label = QLabel()
-                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    label.setStyleSheet("font-size:10px;")
-                    if index < len(ogrenciler):
-                        ogr_no, ad, sinif = ogrenciler[index]
-                        label.setText(f"{ogr_no}\n{ad}")
-                        self.current_plan.append((ogr_no, ad, row + 1, col + 1, s + 1))
-                        index += 1
-                    else:
-                        label.setText("—")
-                    slot.addWidget(label)
-                    masa_layout.addLayout(slot)
+            sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi = data
 
-                masa.setLayout(masa_layout)
-                self.grid.addWidget(masa, row, col)
+            conn = self._conn()
+            c = conn.cursor()
 
-        QMessageBox.information(
-            self,
-            "Başarılı",
-            f"{ders} için oturma planı oluşturuldu.\n{len(self.current_plan)} öğrenci yerleştirildi."
-        )
-        conn.close()
+            # Derslik şemasında 'duzen_tipi' var mı?
+            c.execute("PRAGMA table_info(Derslikler)")
+            cols = [row[1] for row in c.fetchall()]
+            has_duzen = "duzen_tipi" in cols
 
+            if has_duzen:
+                c.execute("""
+                    SELECT sira_sayisi, sutun_sayisi, duzen_tipi, kapasite
+                    FROM Derslikler WHERE rowid=?
+                """, (derslik_id,))
+                row = c.fetchone()
+                if not row:
+                    conn.close()
+                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (id={derslik_id}).")
+                    return
+                boyuna_sira, enine_sutun, duzen_tipi, kapasite = row
+                kisi_per_masa = 3 if (duzen_tipi and "3" in str(duzen_tipi)) else 2
+            else:
+                c.execute("""
+                    SELECT sira_sayisi, sutun_sayisi, kapasite
+                    FROM Derslikler WHERE rowid=?
+                """, (derslik_id,))
+                row = c.fetchone()
+                if not row:
+                    conn.close()
+                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (id={derslik_id}).")
+                    return
+                boyuna_sira, enine_sutun, kapasite = row
+                kisi_per_masa = 2
+
+            toplam_koltuk = int(boyuna_sira) * int(enine_sutun) * int(kisi_per_masa)
+
+            # --- Öğrenciler (ders kodunu normalize ederek ara) ---
+            # 1) boşlukları sil + büyük harfe çevir
+            c.execute("""
+                SELECT ogrenci_no, ad_soyad, sinif
+                FROM Ogrenci_Ders_Kayitlari
+                WHERE UPPER(REPLACE(ders_kodu, ' ', '')) = UPPER(REPLACE(?, ' ', ''))
+                  AND bolum_id=?
+                ORDER BY ogrenci_no
+            """, (ders_kodu, self.bolum_id))
+            ogrenciler = c.fetchall()
+
+            # 2) hâlâ boşsa ders_id ile eşleştirerek dene
+            if not ogrenciler:
+                c.execute("""
+                    SELECT odk.ogrenci_no, odk.ad_soyad, odk.sinif
+                    FROM Ogrenci_Ders_Kayitlari odk
+                    WHERE odk.bolum_id=?
+                      AND EXISTS (
+                        SELECT 1
+                        FROM Dersler d
+                        WHERE d.rowid = ?
+                          AND UPPER(REPLACE(d.ders_kodu,' ','')) = UPPER(REPLACE(odk.ders_kodu,' ', ''))
+                      )
+                    ORDER BY odk.ogrenci_no
+                """, (self.bolum_id, ders_id))
+                ogrenciler = c.fetchall()
+
+            uyarilar = []
+
+            if not ogrenciler:
+                conn.close()
+                QMessageBox.information(self, "Bilgi",
+                                        f"{ders_kodu} - {ders_adi} için öğrenci kaydı bulunamadı.")
+                self._clear_grid_and_table()
+                return
+
+            # Kapasite uyarısı
+            if len(ogrenciler) > toplam_koltuk:
+                uyarilar.append(
+                    f"📌 Kapasite yetersiz: {derslik_adi} (kapasite={toplam_koltuk}) "
+                    f"→ {len(ogrenciler)-toplam_koltuk} öğrenci yerleşemeyecek."
+                )
+                ogrenciler = ogrenciler[:toplam_koltuk]
+
+            # Çakışma kontrolü (aynı tarih-saat)
+            cakisan = []
+            for ogr_no, ad, _sinif in ogrenciler:
+                c.execute("""
+                    SELECT COUNT(1)
+                    FROM SinavProgrami sp
+                    JOIN Dersler d ON sp.ders_id = d.rowid
+                    JOIN Ogrenci_Ders_Kayitlari odk
+                      ON odk.ders_kodu = d.ders_kodu AND odk.ogrenci_no = ?
+                    WHERE sp.tarih=? AND sp.saat=? AND sp.id != ? AND sp.bolum_id=?
+                """, (ogr_no, tarih, saat, sp_id, self.bolum_id))
+                if (c.fetchone() or [0])[0] > 0:
+                    cakisan.append((ogr_no, ad))
+            if cakisan:
+                uyarilar.append("⛔ Aynı tarih-saatte başka sınavı olan öğrenciler: " +
+                                ", ".join([f"{o} ({a})" for o, a in cakisan]))
+
+            # Yan yana oturmama (aynı sınıf veya soyad)
+            def soyad(x: str) -> str:
+                return (x or "").strip().split()[-1].lower() if x else ""
+
+            def yan_yana_olamaz(a, b) -> bool:
+                if not a or not b:
+                    return False
+                return (a[2] == b[2]) or (soyad(a[1]) == soyad(b[1]))
+
+            random.shuffle(ogrenciler)
+            for i in range(len(ogrenciler) - 1):
+                if yan_yana_olamaz(ogrenciler[i], ogrenciler[i + 1]):
+                    j = random.randint(0, len(ogrenciler) - 1)
+                    ogrenciler[i], ogrenciler[j] = ogrenciler[j], ogrenciler[i]
+
+            sorunlu_komsu = []
+            for i in range(len(ogrenciler) - 1):
+                if yan_yana_olamaz(ogrenciler[i], ogrenciler[i + 1]):
+                    sorunlu_komsu.append((ogrenciler[i][1], ogrenciler[i + 1][1]))
+            if sorunlu_komsu:
+                uyarilar.append("⚠️ Yan yana ayrıştırılamayan çiftler: " +
+                                ", ".join([f"{a} & {b}" for a, b in sorunlu_komsu]))
+
+            # --- Çizim öncesi temizle ---
+            self._clear_grid_and_table()
+
+            # --- Yerleştir & Çiz ---
+            self.current_plan.clear()
+            index = 0
+            for r in range(int(boyuna_sira)):       # satır
+                for ccol in range(int(enine_sutun)): # masa (sütun)
+                    masa = QFrame()
+                    masa.setFrameShape(QFrame.Shape.Box)
+                    masa.setStyleSheet("background-color:#f3f3f3; border:1px solid #aaa;")
+                    masa_layout = QHBoxLayout()
+                    masa_layout.setContentsMargins(4, 4, 4, 4)
+                    masa_layout.setSpacing(6)
+
+                    for s in range(int(kisi_per_masa)):  # slot
+                        vbox = QVBoxLayout()
+                        lbl = QLabel()
+                        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        lbl.setStyleSheet("font-size:11px;")
+                        if index < len(ogrenciler):
+                            ogr_no, ad, sinif = ogrenciler[index]
+                            lbl.setText(f"{ogr_no}\n{ad}")
+                            self.current_plan.append(
+                                (str(ogr_no), str(ad), r + 1, ccol + 1, s + 1, derslik_adi)
+                            )
+                            index += 1
+                        else:
+                            lbl.setText("—")
+                        vbox.addWidget(lbl)
+                        masa_layout.addLayout(vbox)
+
+                    masa.setLayout(masa_layout)
+                    self.grid.addWidget(masa, r, ccol)
+
+            # Sağdaki tabloyu doldur
+            self.tbl.setRowCount(len(self.current_plan))
+            for i, (ogr_no, ad, rowi, coli, sloti, d_adi) in enumerate(self.current_plan):
+                self.tbl.setItem(i, 0, QTableWidgetItem(ogr_no))
+                self.tbl.setItem(i, 1, QTableWidgetItem(ad))
+                self.tbl.setItem(i, 2, QTableWidgetItem(d_adi))
+                self.tbl.setItem(i, 3, QTableWidgetItem(str(rowi)))
+                self.tbl.setItem(i, 4, QTableWidgetItem(str(coli)))
+                self.tbl.setItem(i, 5, QTableWidgetItem(str(sloti)))
+
+            info = (f"{ders_kodu} - {ders_adi}\n"
+                    f"{derslik_adi} için oturma planı oluşturuldu.\n"
+                    f"Yerleşen öğrenci: {len(self.current_plan)} / {len(ogrenciler)} "
+                    f"(toplam kapasite: {toplam_koltuk}).")
+            if uyarilar:
+                info += "\n\n" + "\n".join(uyarilar)
+            QMessageBox.information(self, "Bilgi", info)
+
+            conn.close()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Oturma planı oluşturulurken hata oluştu:\n{e}")
+
+    # ---------- PDF export ----------
     def export_pdf(self):
-        if not self.current_plan:
-            QMessageBox.warning(self, "Uyarı", "Lütfen önce oturma planını oluşturun.")
-            return
+        try:
+            if not self.current_plan:
+                QMessageBox.warning(self, "Uyarı", "Lütfen önce oturma planını oluşturun.")
+                return
 
-        sinav_id = self.sinav_combo.currentData()
-        conn = sqlite3.connect("sinav_takvimi.db")
-        c = conn.cursor()
-        c.execute("SELECT ders, derslik, tarih, saat FROM SinavProgrami WHERE id=?", (sinav_id,))
-        ders, derslik, tarih, saat = c.fetchone()
-        c.execute("SELECT enine_sira, boyuna_sira, sira_yapisi FROM Derslikler WHERE sinif_adi=?", (derslik,))
-        enine, boyuna, sira_yapisi = c.fetchone()
-        conn.close()
+            data = self.cmb_exam.currentData()
+            if not data:
+                QMessageBox.warning(self, "Uyarı", "Sınav bilgisi bulunamadı.")
+                return
+            sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi = data
 
-        pdf_name = f"oturma_plani_{ders.replace(' ', '_')}.pdf"
-        pdf = canvas.Canvas(pdf_name, pagesize=A4)
-        w, h = A4
+            conn = self._conn()
+            c = conn.cursor()
 
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(50, h - 50, "DERS BAZLI OTURMA PLANI")
-        pdf.setFont("Helvetica", 12)
-        pdf.drawString(50, h - 70, f"Ders: {ders}")
-        pdf.drawString(50, h - 90, f"Derslik: {derslik}")
-        pdf.drawString(50, h - 110, f"Tarih: {tarih}  Saat: {saat}")
+            # duzen_tipi var mı?
+            c.execute("PRAGMA table_info(Derslikler)")
+            cols = [row[1] for row in c.fetchall()]
+            has_duzen = "duzen_tipi" in cols
 
-        x_start, y_start = 70, h - 150
-        box_w, box_h = 60, 35
-        gap = 10
+            if has_duzen:
+                c.execute("""
+                    SELECT sira_sayisi, sutun_sayisi, duzen_tipi
+                    FROM Derslikler WHERE rowid=?
+                """, (derslik_id,))
+                row = c.fetchone()
+                if not row:
+                    conn.close()
+                    QMessageBox.warning(self, "Uyarı", "Derslik bilgisi alınamadı.")
+                    return
+                boyuna_sira, enine_sutun, duzen_tipi = row
+                kisi_per_masa = 3 if (duzen_tipi and "3" in str(duzen_tipi)) else 2
+            else:
+                c.execute("""
+                    SELECT sira_sayisi, sutun_sayisi
+                    FROM Derslikler WHERE rowid=?
+                """, (derslik_id,))
+                row = c.fetchone()
+                if not row:
+                    conn.close()
+                    QMessageBox.warning(self, "Uyarı", "Derslik bilgisi alınamadı.")
+                    return
+                boyuna_sira, enine_sutun = row
+                kisi_per_masa = 2
 
-        pdf.setFont("Helvetica", 8)
-        for ogr_no, ad, row, col, sira in self.current_plan:
-            x = x_start + ((col - 1) * (int(sira_yapisi) * (box_w + gap))) + ((sira - 1) * (box_w + 5))
-            y = y_start - ((row - 1) * (box_h + gap))
-            pdf.rect(x, y, box_w, box_h)
-            pdf.drawString(x + 4, y + 22, str(ogr_no))
-            pdf.drawString(x + 4, y + 12, ad[:15])
-            pdf.drawString(x + 4, y + 2, f"S:{row},K:{col},Y:{sira}")
+            conn.close()
 
-        pdf.save()
-        QMessageBox.information(self, "PDF Kaydedildi", f"{pdf_name} oluşturuldu.")
+            pdf_name = f"oturma_plani_{(ders_kodu or 'ders').replace(' ', '_')}.pdf"
+            pdf = canvas.Canvas(pdf_name, pagesize=A4)
+            w, h = A4
+
+            pdf.setFont("Helvetica-Bold", 14)
+            pdf.drawString(50, h - 50, "DERS BAZLI OTURMA PLANI")
+            pdf.setFont("Helvetica", 12)
+            pdf.drawString(50, h - 70, f"Ders: {ders_kodu or ''} - {ders_adi or ''}")
+            pdf.drawString(50, h - 90, f"Derslik: {derslik_adi or ''}")
+            pdf.drawString(50, h - 110, f"Tarih: {tarih}  Saat: {saat}")
+
+            x_start, y_start = 50, h - 150
+            box_w, box_h = 58, 34
+            gap = 10
+
+            pdf.setFont("Helvetica", 8)
+            for (ogr_no, ad, rowi, coli, sloti, _dadi) in self.current_plan:
+                x = x_start + ((coli - 1) * (int(kisi_per_masa) * (box_w + gap))) + ((sloti - 1) * (box_w + 4))
+                y = y_start - ((rowi - 1) * (box_h + gap))
+                pdf.rect(x, y, box_w, box_h)
+                pdf.drawString(x + 4, y + 22, str(ogr_no))
+                pdf.drawString(x + 4, y + 12, (ad or "")[:22])
+                pdf.drawString(x + 4, y + 2, f"S:{rowi},K:{coli},Y:{sloti}")
+
+            pdf.save()
+            QMessageBox.information(self, "PDF Kaydedildi", f"{pdf_name} oluşturuldu.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"PDF üretirken hata oluştu:\n{e}")
