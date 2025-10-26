@@ -75,6 +75,20 @@ class OturmaPlanWindow(QWidget):
     # ---------- DB helpers ----------
     def _conn(self):
         return sqlite3.connect("sinav_takvimi.db")
+    
+
+    def _normalize_duzen(self, duzen_tipi: str | None) -> str:
+        """None gelirse güvenli varsayılan döndür."""
+        return (duzen_tipi or "2'li").strip()
+
+    def _kisi_per_masa(self, duzen_tipi: str | None) -> int:
+        d = self._normalize_duzen(duzen_tipi)
+        return 3 if "3" in d else 2
+
+    def _toplam_koltuk(self, sira: int, sutun: int, duzen_tipi: str | None) -> int:
+        return int(sira) * int(sutun) * self._kisi_per_masa(duzen_tipi)
+
+    
 
     def _load_sinavlar(self):
         """Sınav programındaki sınavları listele (ders + derslik + tarih+saat)."""
@@ -96,7 +110,8 @@ class OturmaPlanWindow(QWidget):
 
         self.cmb_exam.clear()
         for (sp_id, kod, ad, derslik, tarih, saat, ders_id, derslik_id) in rows:
-            label = f"{(kod or '')} - {(ad or '')} | {(derslik or '?')} | {tarih} {saat}"
+            label = f"{(kod or '')} - {(ad or '')}  •  {(tarih or '?')} {saat or '?'}  •  {(derslik or '?')}"
+
             # data: (sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi)
             self.cmb_exam.addItem(label, (sp_id, ders_id, derslik_id, tarih, saat, kod, ad, derslik))
 
@@ -127,6 +142,7 @@ class OturmaPlanWindow(QWidget):
             cols = [row[1] for row in c.fetchall()]
             has_duzen = "duzen_tipi" in cols
 
+            # ... derslik bilgisi çekme kısmında:
             if has_duzen:
                 c.execute("""
                     SELECT sira_sayisi, sutun_sayisi, duzen_tipi, kapasite
@@ -135,10 +151,10 @@ class OturmaPlanWindow(QWidget):
                 row = c.fetchone()
                 if not row:
                     conn.close()
-                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (id={derslik_id}).")
+                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (derslik_id={derslik_id}).")
                     return
                 boyuna_sira, enine_sutun, duzen_tipi, kapasite = row
-                kisi_per_masa = 3 if (duzen_tipi and "3" in str(duzen_tipi)) else 2
+                duzen_tipi = self._normalize_duzen(duzen_tipi)
             else:
                 c.execute("""
                     SELECT sira_sayisi, sutun_sayisi, kapasite
@@ -147,10 +163,14 @@ class OturmaPlanWindow(QWidget):
                 row = c.fetchone()
                 if not row:
                     conn.close()
-                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (id={derslik_id}).")
+                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (derslik_id={derslik_id}).")
                     return
                 boyuna_sira, enine_sutun, kapasite = row
-                kisi_per_masa = 2
+                duzen_tipi = "2'li"   # varsayılan
+
+            kisi_per_masa = self._kisi_per_masa(duzen_tipi)
+            toplam_koltuk = self._toplam_koltuk(boyuna_sira, enine_sutun, duzen_tipi)
+
 
             toplam_koltuk = int(boyuna_sira) * int(enine_sutun) * int(kisi_per_masa)
 
@@ -190,88 +210,112 @@ class OturmaPlanWindow(QWidget):
                 self._clear_grid_and_table()
                 return
 
-            # Kapasite uyarısı
             if len(ogrenciler) > toplam_koltuk:
-                uyarilar.append(
-                    f"📌 Kapasite yetersiz: {derslik_adi} (kapasite={toplam_koltuk}) "
-                    f"→ {len(ogrenciler)-toplam_koltuk} öğrenci yerleşemeyecek."
+                fazla = len(ogrenciler) - toplam_koltuk
+                QMessageBox.warning(
+                    self, "Kapasite Uyarısı",
+                    f"Belirtilen öğrenci ön sıraya yerleştirilemedi (kapasite dolu)!\n\n"
+                    f"Sınav: {ders_kodu} - {ders_adi}\n"
+                    f"Derslik: {derslik_adi}  (Düzen: {duzen_tipi}, Sıra×Sütun: {boyuna_sira}×{enine_sutun}, "
+                    f"Kişi/masa: {kisi_per_masa})\n"
+                    f"Kapasite: {toplam_koltuk}  •  Öğrenci: {len(ogrenciler)}  •  Sığmayan: {fazla}"
                 )
                 ogrenciler = ogrenciler[:toplam_koltuk]
 
+
             # Çakışma kontrolü (aynı tarih-saat)
+            # çakışma kontrolü – ders_kodu normalize ederek eşleştir
             cakisan = []
             for ogr_no, ad, _sinif in ogrenciler:
                 c.execute("""
                     SELECT COUNT(1)
                     FROM SinavProgrami sp
-                    JOIN Dersler d ON sp.ders_id = d.rowid
+                    JOIN Dersler d ON UPPER(REPLACE(d.ders_kodu,' ','')) =
+                                    UPPER(REPLACE((SELECT d2.ders_kodu FROM Dersler d2 WHERE d2.rowid=sp.ders_id),' ', ''))
                     JOIN Ogrenci_Ders_Kayitlari odk
-                      ON odk.ders_kodu = d.ders_kodu AND odk.ogrenci_no = ?
+                        ON odk.ogrenci_no = ?
+                        AND UPPER(REPLACE(odk.ders_kodu,' ','')) = UPPER(REPLACE(d.ders_kodu,' ', ''))
                     WHERE sp.tarih=? AND sp.saat=? AND sp.id != ? AND sp.bolum_id=?
                 """, (ogr_no, tarih, saat, sp_id, self.bolum_id))
                 if (c.fetchone() or [0])[0] > 0:
                     cakisan.append((ogr_no, ad))
+
             if cakisan:
                 uyarilar.append("⛔ Aynı tarih-saatte başka sınavı olan öğrenciler: " +
                                 ", ".join([f"{o} ({a})" for o, a in cakisan]))
 
             # Yan yana oturmama (aynı sınıf veya soyad)
-            def soyad(x: str) -> str:
-                return (x or "").strip().split()[-1].lower() if x else ""
+           
+
+
+            def _soyad(s: str) -> str:
+                return (s or "").strip().split()[-1].lower()
 
             def yan_yana_olamaz(a, b) -> bool:
-                if not a or not b:
-                    return False
-                return (a[2] == b[2]) or (soyad(a[1]) == soyad(b[1]))
+                if not a or not b: return False
+                return (a[2] == b[2]) or (_soyad(a[1]) == _soyad(b[1]))
 
-            random.shuffle(ogrenciler)
-            for i in range(len(ogrenciler) - 1):
-                if yan_yana_olamaz(ogrenciler[i], ogrenciler[i + 1]):
-                    j = random.randint(0, len(ogrenciler) - 1)
-                    ogrenciler[i], ogrenciler[j] = ogrenciler[j], ogrenciler[i]
+            # deterministik sırala: sınıf, soyad, öğrenci no
+            ogrenciler.sort(key=lambda x: (x[2], _soyad(x[1]), str(x[0])))
 
+            # zig-zag dağıtım: çift indexler önce, tek indexler sonra – komşuluğu azaltır
+            sol = ogrenciler[::2]
+            sag = ogrenciler[1::2]
+            ogrenciler = sol + sag
+
+            # kontrol: yan yana kalanları raporla
             sorunlu_komsu = []
-            for i in range(len(ogrenciler) - 1):
-                if yan_yana_olamaz(ogrenciler[i], ogrenciler[i + 1]):
-                    sorunlu_komsu.append((ogrenciler[i][1], ogrenciler[i + 1][1]))
+            for i in range(len(ogrenciler)-1):
+                if yan_yana_olamaz(ogrenciler[i], ogrenciler[i+1]):
+                    sorunlu_komsu.append((ogrenciler[i][1], ogrenciler[i+1][1]))
+
             if sorunlu_komsu:
-                uyarilar.append("⚠️ Yan yana ayrıştırılamayan çiftler: " +
-                                ", ".join([f"{a} & {b}" for a, b in sorunlu_komsu]))
+                QMessageBox.warning(
+                    self, "Uyarı",
+                    "Bu iki öğrenci yan yana oturmayacak şekilde plan oluşturulamadı!\n\n"
+                    + "\n".join([f"• {a}  &  {b}" for a,b in sorunlu_komsu[:12]])
+                    + ("\n..." if len(sorunlu_komsu) > 12 else "")
+                    + f"\n\nSınav: {ders_kodu} - {ders_adi}  •  Derslik: {derslik_adi}"
+                )
 
             # --- Çizim öncesi temizle ---
             self._clear_grid_and_table()
 
             # --- Yerleştir & Çiz ---
+            # Üstte ‘ÖN’ şeridi
+            header = QLabel("Ö N")
+            header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            header.setStyleSheet("background:#eef3ff; border:1px solid #bbc7e5; font-weight:600; padding:4px;")
+            self.grid.addWidget(header, 0, 0, 1, int(enine_sutun))
+
             self.current_plan.clear()
             index = 0
-            for r in range(int(boyuna_sira)):       # satır
-                for ccol in range(int(enine_sutun)): # masa (sütun)
+            for r in range(int(boyuna_sira)):       # satırlar
+                for ccol in range(int(enine_sutun)): # masalar
                     masa = QFrame()
                     masa.setFrameShape(QFrame.Shape.Box)
-                    masa.setStyleSheet("background-color:#f3f3f3; border:1px solid #aaa;")
-                    masa_layout = QHBoxLayout()
-                    masa_layout.setContentsMargins(4, 4, 4, 4)
-                    masa_layout.setSpacing(6)
+                    masa.setStyleSheet("background-color:#f6f7f9; border:1px solid #cfd4dc;")
+                    masa_layout = QHBoxLayout(); masa_layout.setContentsMargins(4,4,4,4); masa_layout.setSpacing(6)
 
-                    for s in range(int(kisi_per_masa)):  # slot
-                        vbox = QVBoxLayout()
-                        lbl = QLabel()
-                        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        lbl.setStyleSheet("font-size:11px;")
+                    for s in range(int(kisi_per_masa)):
+                        vbox = QVBoxLayout(); vbox.setContentsMargins(0,0,0,0); vbox.setSpacing(2)
+                        slot_lbl = QLabel(f"Slot {s+1}"); slot_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        slot_lbl.setStyleSheet("color:#6b7280; font-size:10px;")
+                        name_lbl = QLabel(); name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        name_lbl.setStyleSheet("font-size:11px;")
                         if index < len(ogrenciler):
                             ogr_no, ad, sinif = ogrenciler[index]
-                            lbl.setText(f"{ogr_no}\n{ad}")
-                            self.current_plan.append(
-                                (str(ogr_no), str(ad), r + 1, ccol + 1, s + 1, derslik_adi)
-                            )
+                            name_lbl.setText(f"{ogr_no}\n{ad}")
+                            self.current_plan.append((str(ogr_no), str(ad), r+1, ccol+1, s+1, derslik_adi))
                             index += 1
                         else:
-                            lbl.setText("—")
-                        vbox.addWidget(lbl)
+                            name_lbl.setText("—")
+                        vbox.addWidget(slot_lbl); vbox.addWidget(name_lbl)
                         masa_layout.addLayout(vbox)
-
                     masa.setLayout(masa_layout)
-                    self.grid.addWidget(masa, r, ccol)
+                    # +1: ilk satır başlık şeridi için ayrıldı
+                    self.grid.addWidget(masa, r+1, ccol)
+
 
             # Sağdaki tabloyu doldur
             self.tbl.setRowCount(len(self.current_plan))
@@ -344,7 +388,10 @@ class OturmaPlanWindow(QWidget):
 
             conn.close()
 
-            pdf_name = f"oturma_plani_{(ders_kodu or 'ders').replace(' ', '_')}.pdf"
+            duzen_tipi = self._normalize_duzen(duzen_tipi)
+            kisi_per_masa = self._kisi_per_masa(duzen_tipi)
+            pdf_name = f"oturma_plani_{(ders_kodu or 'ders').replace(' ', '_')}_{tarih.replace('-', '')}_{saat.replace(':','')}.pdf"
+
             pdf = canvas.Canvas(pdf_name, pagesize=A4)
             w, h = A4
 
@@ -361,7 +408,8 @@ class OturmaPlanWindow(QWidget):
 
             pdf.setFont("Helvetica", 8)
             for (ogr_no, ad, rowi, coli, sloti, _dadi) in self.current_plan:
-                x = x_start + ((coli - 1) * (int(kisi_per_masa) * (box_w + gap))) + ((sloti - 1) * (box_w + 4))
+                x = x_start + ((coli - 1) * ((box_w * kisi_per_masa) + gap)) + ((sloti - 1) * (box_w + 6))
+
                 y = y_start - ((rowi - 1) * (box_h + gap))
                 pdf.rect(x, y, box_w, box_h)
                 pdf.drawString(x + 4, y + 22, str(ogr_no))
