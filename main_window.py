@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import QSizePolicy
 import sqlite3
-
+from PyQt6.QtGui import QPixmap, QPainter
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox
@@ -14,19 +14,86 @@ class MainWindow(QWidget):
         super().__init__()
         self.rol = rol
         self.bolum_id = bolum_id
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"  # 💾 arka plan görseli
 
         self.setWindowTitle("Sınav Takvimi Ana Menü")
         self.setGeometry(450, 200, 600, 400)
         self.setup_ui()
 
+
+
+    def paintEvent(self, event):
+        """Arka plan resmini ekrana uygula"""
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            painter.setOpacity(0.12)  # arka plan saydamlığı (0.0–1.0)
+            painter.drawPixmap(0, 0, scaled)
+        painter.end()
+   
+
     def setup_ui(self):
-        title = QLabel("📅 Dinamik Sınav Takvimi Sistemi")
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #F8F9F9;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2E2E2E;
+            }
+
+            QLabel#titleLabel {
+                color: #1B5E20;
+                font-size: 20px;
+                font-weight: 600;
+                margin-bottom: 10px;
+            }
+
+            QLabel#subtitleLabel {
+                color: #4E4E4E;
+                font-size: 13px;
+                margin-bottom: 20px;
+            }
+
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+
+            QPushButton:hover {
+                background-color: #1B5E20;
+            }
+
+            QPushButton:disabled {
+                background-color: #A5D6A7;
+                color: #F1F8E9;
+            }
+
+            QScrollArea, QListWidget {
+                background-color: white;
+                border: 1px solid #C8E6C9;
+                border-radius: 8px;
+            }
+        """)
+
+
+
+        title = QLabel("Kocaeli Üniversitesi Bilgi Yönetim Sistemleri")
+        title.setObjectName("titleLabel")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
 
         subtitle = QLabel(f"Giriş yapan rol: {self.rol}")
+        subtitle.setObjectName("subtitleLabel")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #555; margin-bottom: 20px;")
+
+
+       
+
 
         # Ortak menü
         btn_logout = QPushButton("Çıkış Yap")
@@ -62,8 +129,7 @@ class MainWindow(QWidget):
             vbox.addWidget(self.ogrenci_listesi_button)
             vbox.addWidget(self.ders_listesi_button)
 
-            vbox.addWidget(self.create_button("🗓️ Sınav Programı Oluştur", self.open_sinav_panel))
-            vbox.addWidget(self.create_button("🪑 Oturma Planı", self.open_oturma_plan_panel))
+           
 
                         # 🔍 Derslik kontrolü
             derslik_var = self.check_derslik_bilgisi()
@@ -94,16 +160,27 @@ class MainWindow(QWidget):
         btn = QPushButton(text)
         btn.setStyleSheet("""
             QPushButton {
-                background-color: #005BBB; color: white;
-                font-weight: bold; padding: 10px; border-radius: 6px;
-                text-align: left;
+                background-color: white;
+                color: #1B5E20;
+                border: 2px solid #1B5E20;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-weight: 600;
+                font-size: 14px;
             }
             QPushButton:hover {
-                background-color: #004099;
+                background-color: #2E7D32;
+                color: white;
+            }
+            QPushButton:disabled {
+                background-color: #E0E0E0;
+                color: #9E9E9E;
+                border: 2px solid #BDBDBD;
             }
         """)
         btn.clicked.connect(func)
         return btn
+
 
     # --- Menü Fonksiyonları ---
     def open_user_management(self):

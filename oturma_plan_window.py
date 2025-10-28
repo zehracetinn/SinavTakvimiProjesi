@@ -11,12 +11,16 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.colors import Color
 
 
 class OturmaPlanWindow(QWidget):
     def __init__(self, bolum_id: int):
         super().__init__()
         self.bolum_id = bolum_id
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"
         self.setWindowTitle("🪑 Ders Bazlı Oturma Planı")
         self.resize(1050, 700)
 
@@ -26,9 +30,77 @@ class OturmaPlanWindow(QWidget):
         self._setup_ui()
         self._load_sinavlar()
 
+
+        def paintEvent(self, event):
+            painter = QPainter(self)
+            pixmap = QPixmap(self.bg_path)
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                painter.setOpacity(0.07)
+                painter.drawPixmap(0, 0, scaled)
+
     # ---------- UI ----------
     def _setup_ui(self):
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #F8F9F9;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2E2E2E;
+            }
+
+            QLabel#header {
+                color: #1B5E20;
+                font-size: 20px;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+
+            QLabel {
+                font-size: 13px;
+                color: #2E2E2E;
+            }
+
+            QComboBox {
+                background-color: white;
+                border: 1px solid #A5D6A7;
+                border-radius: 5px;
+                padding: 5px;
+            }
+
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+
+            QPushButton:hover {
+                background-color: #1B5E20;
+            }
+
+            QScrollArea, QTableWidget {
+                background-color: white;
+                border: 1px solid #C8E6C9;
+                border-radius: 8px;
+            }
+
+            QHeaderView::section {
+                background-color: #E8F5E9;
+                font-weight: 600;
+                border: 1px solid #C8E6C9;
+            }
+        """)
+
+
+
+
+
         root = QVBoxLayout(self)
+        root.setContentsMargins(25, 20, 25, 20)
+        root.setSpacing(12)
 
         title = QLabel("📘 Ders Bazlı Oturma Planı")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -48,6 +120,7 @@ class OturmaPlanWindow(QWidget):
         root.addLayout(top)
 
         mid = QHBoxLayout()
+        mid.setSpacing(15)
 
         # Sol: ızgara (derslik yerleşimi)
         self.scroll = QScrollArea()
@@ -342,6 +415,8 @@ class OturmaPlanWindow(QWidget):
 
       # ---------- PDF export ----------
     def export_pdf(self):
+    
+
         try:
             if not self.current_plan:
                 QMessageBox.warning(self, "Uyarı", "Lütfen önce oturma planını oluşturun.")
@@ -356,48 +431,37 @@ class OturmaPlanWindow(QWidget):
 
             conn = self._conn()
             c = conn.cursor()
+            c.execute("""
+                SELECT sira_sayisi, sutun_sayisi, duzen_tipi
+                FROM Derslikler WHERE rowid=?
+            """, (derslik_id,))
+            row = c.fetchone()
+            if not row:
+                QMessageBox.warning(self, "Uyarı", "Derslik bilgisi alınamadı.")
+                return
 
-            # duzen_tipi var mı?
-            c.execute("PRAGMA table_info(Derslikler)")
-            cols = [row[1] for row in c.fetchall()]
-            has_duzen = "duzen_tipi" in cols
-
-            if has_duzen:
-                c.execute("""
-                    SELECT sira_sayisi, sutun_sayisi, duzen_tipi
-                    FROM Derslikler WHERE rowid=?
-                """, (derslik_id,))
-                row = c.fetchone()
-                if not row:
-                    conn.close()
-                    QMessageBox.warning(self, "Uyarı", "Derslik bilgisi alınamadı.")
-                    return
-                boyuna_sira, enine_sutun, duzen_tipi = row
-                kisi_per_masa = 3 if (duzen_tipi and "3" in str(duzen_tipi)) else 2
-            else:
-                c.execute("""
-                    SELECT sira_sayisi, sutun_sayisi
-                    FROM Derslikler WHERE rowid=?
-                """, (derslik_id,))
-                row = c.fetchone()
-                if not row:
-                    conn.close()
-                    QMessageBox.warning(self, "Uyarı", "Derslik bilgisi alınamadı.")
-                    return
-                boyuna_sira, enine_sutun = row
-                kisi_per_masa = 2
-
+            boyuna_sira, enine_sutun, duzen_tipi = row
+            kisi_per_masa = 3 if (duzen_tipi and "3" in str(duzen_tipi)) else 2
             conn.close()
 
-            # 🔹 PDF dosya adı ve hizalama
             pdf_name = f"oturma_plani_{(ders_kodu or 'ders').replace(' ', '_')}_{tarih.replace('-', '')}_{saat.replace(':','')}.pdf"
+
+            # ✅ Unicode font kaydı (DejaVuSans veya Arial Unicode)
+            try:
+                pdfmetrics.registerFont(TTFont("DejaVuSans", "/Library/Fonts/Arial Unicode.ttf"))
+                font_name = "DejaVuSans"
+            except:
+                from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+                pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
+                font_name = "HeiseiKakuGo-W5"
 
             pdf = canvas.Canvas(pdf_name, pagesize=A4)
             w, h = A4
 
-            pdf.setFont("Helvetica-Bold", 14)
-            pdf.drawString(50, h - 50, "DERS BAZLI OTURMA PLANI")
-            pdf.setFont("Helvetica", 12)
+            pdf.setFont(font_name, 14)
+            pdf.drawString(50, h - 50, "KOCAELİ ÜNİVERSİTESİ - DERS BAZLI OTURMA PLANI")
+
+            pdf.setFont(font_name, 11)
             pdf.drawString(50, h - 70, f"Ders: {ders_kodu or ''} - {ders_adi or ''}")
             pdf.drawString(50, h - 90, f"Derslik: {derslik_adi or ''}")
             pdf.drawString(50, h - 110, f"Tarih: {tarih}  Saat: {saat}")
@@ -406,18 +470,38 @@ class OturmaPlanWindow(QWidget):
             box_w, box_h = 58, 34
             gap = 10
 
-            pdf.setFont("Helvetica", 8)
+            pdf.setFont(font_name, 8)
+            pink = Color(1, 0.75, 0.8)  # pembe tonu
+
             for (ogr_no, ad, rowi, coli, sloti, _dadi) in self.current_plan:
-                # hizalama düzeltildi
                 x = x_start + ((coli - 1) * ((box_w * kisi_per_masa) + gap)) + ((sloti - 1) * (box_w + 6))
                 y = y_start - ((rowi - 1) * (box_h + gap))
-                pdf.rect(x, y, box_w, box_h)
+
+                pdf.setFillColor(pink)
+                pdf.rect(x, y, box_w, box_h, fill=1, stroke=1)
+
+                pdf.setFillColorRGB(0, 0, 0)
                 pdf.drawString(x + 4, y + 22, str(ogr_no))
-                pdf.drawString(x + 4, y + 12, (ad or "")[:22])
+                pdf.drawString(x + 4, y + 12, (ad or "")[:25])
                 pdf.drawString(x + 4, y + 2, f"S:{rowi},K:{coli},Y:{sloti}")
 
             pdf.save()
-            QMessageBox.information(self, "PDF Kaydedildi", f"{pdf_name} oluşturuldu.")
+
+            # ✅ Otomatik aç
+            import os, platform, subprocess
+            system = platform.system()
+            try:
+                if system == "Windows":
+                    os.startfile(pdf_name)
+                elif system == "Darwin":  # macOS
+                    subprocess.call(["open", pdf_name])
+                else:
+                    subprocess.call(["xdg-open", pdf_name])
+            except Exception:
+                QMessageBox.warning(self, "Uyarı", "PDF kaydedildi ancak otomatik açılamadı.")
+
+            QMessageBox.information(self, "PDF Kaydedildi", f"{pdf_name} oluşturuldu ve açıldı.")
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"PDF üretirken hata oluştu:\n{e}")
+

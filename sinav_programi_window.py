@@ -4,6 +4,8 @@ import platform
 import subprocess
 import pandas as pd
 import traceback
+from PyQt6.QtGui import QPainter, QPixmap
+
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
@@ -22,14 +24,88 @@ class SinavProgramiWindow(QWidget):
 
         super().__init__()
         self.bolum_id = bolum_id
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"  # 
         self.setWindowTitle("📅 Sınav Programı Oluştur")
-        self.resize(600, 600)
+        self.resize(720, 600)
         self.setup_ui()
         self.load_dersler()
 
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            painter.setOpacity(0.08)
+            painter.drawPixmap(0, 0, scaled)
+        painter.end()
+
     # ---------------- UI ----------------
     def setup_ui(self):
+         
+
+        self.setStyleSheet("""
+                QWidget {
+                background-color: #F8F9F9;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2E2E2E;
+            }
+
+            QLabel#header {
+                color: #1B5E20;
+                font-size: 20px;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+
+            QLabel {
+                color: #2E2E2E;
+                font-size: 13px;
+            }
+
+            QListWidget {
+                background-color: white;
+                border: 1px solid #C8E6C9;
+                border-radius: 8px;
+                padding: 6px;
+            }
+
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px;
+                font-weight: 600;
+            }
+
+            QPushButton:hover {
+                background-color: #1B5E20;
+            }
+
+            QDateEdit, QComboBox, QSpinBox {
+                background-color: white;
+                border: 1px solid #A5D6A7;
+                border-radius: 4px;
+                padding: 4px;
+                font-size: 13px;
+            }
+        """)     
+
+
+
+
+
         layout = QVBoxLayout()
+        layout.setContentsMargins(30, 25, 30, 25)
+        layout.setSpacing(10)
+
+
+        header = QLabel("📅 Sınav Programı Oluştur")
+        header.setObjectName("header")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(header)
+
 
         layout.addWidget(QLabel("Dahil Edilecek Dersler:"))
         self.ders_list = QListWidget()
@@ -82,6 +158,7 @@ class SinavProgramiWindow(QWidget):
         self.olustur_btn.clicked.connect(self.create_program)
         layout.addWidget(self.olustur_btn)
 
+        layout.addStretch()
         self.setLayout(layout)
 
     # ---------------- Dersleri yükle ----------------
@@ -249,6 +326,25 @@ class SinavProgramiWindow(QWidget):
             uyarilar = []
             doluluk_raporu = {}
 
+
+
+            def slot_uygun_mu(ogrenciler, day, hour, ders_sinif):
+                h, m = parse_time(hour)
+                slot_dt = datetime(day.year, day.month, day.day, h, m)
+                for ogr in ogrenciler:
+                    for var_dt, sinif in ogrenci_program.get(ogr, []):
+                        diff = abs((slot_dt - var_dt).total_seconds()) / 60.0
+                        if diff < min_gap or (sinif == ders_sinif and slot_dt.date() == var_dt.date()):
+                            return False
+                return True
+
+
+           
+
+
+
+
+
             def uygun_derslik_bul(kac_ogr, day, hour):
                 key = (day.isoformat(), hour)
                 kullanilan = slot_rooms.get(key, set())
@@ -274,23 +370,20 @@ class SinavProgramiWindow(QWidget):
                 h, m = map(int, hhmm.split(":"))
                 return h, m
 
-            def slot_uygun_mu(ogrenciler, day, hour):
-                h, m = parse_time(hour)
-                slot_dt = datetime(day.year, day.month, day.day, h, m)
-                for ogr in ogrenciler:
-                    for var_dt in ogrenci_program.get(ogr, []):
-                        diff = abs((slot_dt - var_dt).total_seconds()) / 60.0
-                        if diff < min_gap:
-                            return False
-                return True
+            
+
+
+
+
 
             for ders_id in ders_siralama:
                 ders_kodu, ders_adi, sinif, ogr_say, ogr_list = ders_bilgisi[ders_id]
                 yerlesti = False
                 for gun in tarih_listesi:
                     for saat in saat_listesi:
-                        if not slot_uygun_mu(ogr_list, gun, saat):
+                        if not slot_uygun_mu(ogr_list, gun, saat, sinif):
                             continue
+
                         try:
                             oda = uygun_derslik_bul(ogr_say, gun, saat)
                         except ValueError as ve:
@@ -306,7 +399,8 @@ class SinavProgramiWindow(QWidget):
                         h, m = parse_time(saat)
                         slot_dt = datetime(gun.year, gun.month, gun.day, h, m)
                         for ogr in ogr_list:
-                            ogrenci_program.setdefault(ogr, []).append(slot_dt)
+                            ogrenci_program.setdefault(ogr, []).append((slot_dt, sinif))
+
                         slot_rooms.setdefault((gun.isoformat(), saat), set()).add(oda[0])
                         doluluk_raporu.setdefault(oda[1], []).append(ogr_say)
                         program.append([
