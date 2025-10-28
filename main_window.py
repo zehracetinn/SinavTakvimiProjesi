@@ -1,5 +1,7 @@
 import sys
 from PyQt6.QtWidgets import QSizePolicy
+import sqlite3
+
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox
@@ -62,6 +64,23 @@ class MainWindow(QWidget):
 
             vbox.addWidget(self.create_button("🗓️ Sınav Programı Oluştur", self.open_sinav_panel))
             vbox.addWidget(self.create_button("🪑 Oturma Planı", self.open_oturma_plan_panel))
+
+                        # 🔍 Derslik kontrolü
+            derslik_var = self.check_derslik_bilgisi()
+
+            if not derslik_var:
+                self.sinav_button = self.create_button("📅 Sınav Programı Oluştur", self.show_derslik_uyari)
+                self.oturma_button = self.create_button("🪑 Oturma Planı", self.show_derslik_uyari)
+                self.sinav_button.setEnabled(False)
+                self.oturma_button.setEnabled(False)
+                vbox.addWidget(self.sinav_button)
+                vbox.addWidget(self.oturma_button)
+            else:
+                self.sinav_button = self.create_button("📅 Sınav Programı Oluştur", self.open_sinav_panel)
+                self.oturma_button = self.create_button("🪑 Oturma Planı", self.open_oturma_plan_panel)
+                vbox.addWidget(self.sinav_button)
+                vbox.addWidget(self.oturma_button)
+
 
         # buradan SONRA gelen kısım (aşağıdakiler) kalacak 👇
         vbox.addStretch()
@@ -197,6 +216,30 @@ class MainWindow(QWidget):
 
         except Exception as e:
             QMessageBox.warning(self, "Uyarı", f"Menüler aktif edilirken hata oluştu:\n{e}")
+
+
+
+    def check_derslik_bilgisi(self):
+        """Derslik tablosunda kayıt var mı kontrol eder"""
+        try:
+            conn = sqlite3.connect("sinav_takvimi.db")
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM Derslikler WHERE bolum_id=?", (self.bolum_id,))
+            count = cur.fetchone()[0]
+            conn.close()
+            return count > 0
+        except Exception as e:
+            QMessageBox.warning(self, "Uyarı", f"Derslik kontrolü yapılırken hata oluştu:\n{e}")
+            return False
+
+    def show_derslik_uyari(self):
+        QMessageBox.warning(
+            self,
+            "Uyarı",
+            "Derslik bilgileri girilmeden bu alana erişemezsiniz.\n\n"
+            "Lütfen önce '🏢 Derslik Yönetimi' ekranından derslik bilgilerini tamamlayın."
+        )
+
 
     def open_ders_yukle_window(self):
         from ders_yukle_window import DersYukleWindow

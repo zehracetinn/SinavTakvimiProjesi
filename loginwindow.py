@@ -15,7 +15,7 @@ class LoginWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Sınav Takvimi Giriş Ekranı")
         self.setGeometry(500, 250, 420, 280)
-        self.bg_path = "C:\\Users\\PC\\Desktop\\SinavTakvimiProjesi\\hakkimizdabanner.jpg"
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"
         self.setup_ui()
 
     def paintEvent(self, event):

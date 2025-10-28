@@ -340,7 +340,7 @@ class OturmaPlanWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Oturma planı oluşturulurken hata oluştu:\n{e}")
 
-    # ---------- PDF export ----------
+      # ---------- PDF export ----------
     def export_pdf(self):
         try:
             if not self.current_plan:
@@ -351,6 +351,7 @@ class OturmaPlanWindow(QWidget):
             if not data:
                 QMessageBox.warning(self, "Uyarı", "Sınav bilgisi bulunamadı.")
                 return
+
             sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi = data
 
             conn = self._conn()
@@ -388,8 +389,7 @@ class OturmaPlanWindow(QWidget):
 
             conn.close()
 
-            duzen_tipi = self._normalize_duzen(duzen_tipi)
-            kisi_per_masa = self._kisi_per_masa(duzen_tipi)
+            # 🔹 PDF dosya adı ve hizalama
             pdf_name = f"oturma_plani_{(ders_kodu or 'ders').replace(' ', '_')}_{tarih.replace('-', '')}_{saat.replace(':','')}.pdf"
 
             pdf = canvas.Canvas(pdf_name, pagesize=A4)
@@ -408,8 +408,8 @@ class OturmaPlanWindow(QWidget):
 
             pdf.setFont("Helvetica", 8)
             for (ogr_no, ad, rowi, coli, sloti, _dadi) in self.current_plan:
+                # hizalama düzeltildi
                 x = x_start + ((coli - 1) * ((box_w * kisi_per_masa) + gap)) + ((sloti - 1) * (box_w + 6))
-
                 y = y_start - ((rowi - 1) * (box_h + gap))
                 pdf.rect(x, y, box_w, box_h)
                 pdf.drawString(x + 4, y + 22, str(ogr_no))

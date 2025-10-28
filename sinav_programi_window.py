@@ -13,10 +13,13 @@ from PyQt6.QtWidgets import (
     QMessageBox, QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidgetItem, QInputDialog
 
 
 class SinavProgramiWindow(QWidget):
     def __init__(self, bolum_id):
+        self.istisna_sureleri = {}  # {ders_id: sure_dk}
+
         super().__init__()
         self.bolum_id = bolum_id
         self.setWindowTitle("📅 Sınav Programı Oluştur")
@@ -67,6 +70,14 @@ class SinavProgramiWindow(QWidget):
         sure_layout.addWidget(self.bekleme_spin)
         layout.addLayout(sure_layout)
 
+
+        # --- İstisnai süre butonu ---
+        self.istisna_btn = QPushButton("🕒 İstisnai Sınav Süresi Belirle")
+        self.istisna_btn.setToolTip("Bazı dersler için farklı sınav süresi tanımla")
+        self.istisna_btn.clicked.connect(self.open_istisna_dialog)
+        layout.addWidget(self.istisna_btn)
+
+
         self.olustur_btn = QPushButton("📅 Programı Oluştur")
         self.olustur_btn.clicked.connect(self.create_program)
         layout.addWidget(self.olustur_btn)
@@ -90,6 +101,57 @@ class SinavProgramiWindow(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, ders[0])
             item.setCheckState(Qt.CheckState.Checked)
             self.ders_list.addItem(item)
+
+
+
+    from PyQt6.QtWidgets import QInputDialog
+
+    def open_istisna_dialog(self):
+        if self.ders_list.count() == 0:
+            QMessageBox.warning(self, "Uyarı", "Henüz ders listesi yüklenmemiş.")
+            return
+
+        # 💡 Önce kullanıcıya bir ders seçtir
+        dersler = []
+        ders_map = {}
+        for i in range(self.ders_list.count()):
+            item = self.ders_list.item(i)
+            ders_adi = item.text()
+            ders_id = item.data(Qt.ItemDataRole.UserRole)
+            dersler.append(ders_adi)
+            ders_map[ders_adi] = ders_id
+
+        ders_adi, ok = QInputDialog.getItem(
+            self,
+            "İstisnai Süre",
+            "İstisna uygulanacak dersi seçin:",
+            dersler,
+            editable=False
+        )
+        if not ok or not ders_adi:
+            return  # kullanıcı iptal ettiyse çık
+
+        # 🕒 sonra sadece o ders için süre sor
+        sure, ok = QInputDialog.getInt(
+            self,
+            "İstisnai Süre",
+            f"{ders_adi} için sınav süresi (dakika):",
+            75, 30, 180, 5
+        )
+        if not ok:
+            return
+
+        # 💾 kaydet
+        ders_id = ders_map[ders_adi]
+        self.istisna_sureleri[ders_id] = sure
+
+        QMessageBox.information(
+            self,
+            "Bilgi",
+            f"{ders_adi} için sınav süresi {sure} dk olarak kaydedildi."
+        )
+
+
 
     # ---------------- Program oluşturma ----------------
     def create_program(self):
@@ -117,6 +179,9 @@ class SinavProgramiWindow(QWidget):
             bitis = self.end_date.date().toPyDate()
             sinav_turu = self.tur_combo.currentText()
             sure = self.sure_spin.value()
+            # 🔹 Her ders için özel süre varsa onu kullan
+            
+
             min_gap = self.bekleme_spin.value()
 
             # seçilen dersler
@@ -144,6 +209,7 @@ class SinavProgramiWindow(QWidget):
 
             # ders bilgilerini al
             for ders_id in secili_dersler:
+                ders_sure = self.istisna_sureleri.get(ders_id, sure)
                 cur.execute("SELECT ders_kodu, ders_adi, sinif FROM Dersler WHERE rowid=?", (ders_id,))
                 row = cur.fetchone()
                 if not row:
@@ -234,7 +300,7 @@ class SinavProgramiWindow(QWidget):
                             continue
                         yerlesti = True
                         cur.execute("""
-                            INSERT INTO SinavProgrami (ders_id, derslik_id, tarih, saat, sure, sinav_turu, bolum_id)
+                            INSERT INTO SinavProgrami (ders_id, derslik_id, tarih, saat, ders_sure, sinav_turu, bolum_id)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         """, (ders_id, oda[0], gun.strftime("%Y-%m-%d"), saat, sure, sinav_turu, self.bolum_id))
                         h, m = parse_time(saat)
@@ -243,7 +309,15 @@ class SinavProgramiWindow(QWidget):
                             ogrenci_program.setdefault(ogr, []).append(slot_dt)
                         slot_rooms.setdefault((gun.isoformat(), saat), set()).add(oda[0])
                         doluluk_raporu.setdefault(oda[1], []).append(ogr_say)
-                        program.append([f"{ders_kodu} - {ders_adi}", oda[1], gun.strftime("%d.%m.%Y"), saat, sinav_turu])
+                        program.append([
+                            f"{ders_kodu} - {ders_adi}",
+                            oda[1],
+                            gun.strftime("%d.%m.%Y"),
+                            saat,
+                            ders_sure,
+                            sinav_turu
+                        ])
+
                         break
                     if yerlesti:
                         break
@@ -258,7 +332,7 @@ class SinavProgramiWindow(QWidget):
                 return
 
             file_path = os.path.abspath("sinav_programi.xlsx")
-            df = pd.DataFrame(program, columns=["Ders", "Derslik", "Tarih", "Saat", "Tür"])
+            df = pd.DataFrame(program, columns=["Ders", "Derslik", "Tarih", "Saat", "Süre (dk)", "Tür"])
             rapor = pd.DataFrame(
                 [{"Derslik": d, "Ortalama Doluluk": f"{sum(lst)}/{len(lst)} sınav"} for d, lst in doluluk_raporu.items()]
             )
