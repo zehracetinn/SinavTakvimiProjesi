@@ -128,10 +128,23 @@ class MainWindow(QWidget):
             self.ders_listesi_button.setEnabled(False)
             vbox.addWidget(self.ogrenci_listesi_button)
             vbox.addWidget(self.ders_listesi_button)
+            
+            
+            btnTemizle = QPushButton("Veritabanını Temizle", self)
+            btnTemizle.setGeometry(50, 400, 200, 40)
+            btnTemizle.clicked.connect(self.clear_database)
+          
 
-           
 
-                        # 🔍 Derslik kontrolü
+            vbox.addWidget(btnTemizle)
+
+            btnTemizleOgrenci = QPushButton("Öğrenci Tablosunu Temizle", self)
+            btnTemizleOgrenci.setGeometry(50, 450, 200, 40)
+            btnTemizleOgrenci.clicked.connect(self.temizle_ogrenci_listesi)
+            vbox.addWidget(btnTemizleOgrenci)
+
+
+            # 🔍 Derslik kontrolü
             derslik_var = self.check_derslik_bilgisi()
 
             if not derslik_var:
@@ -199,13 +212,44 @@ class MainWindow(QWidget):
         except Exception as e:
                 QMessageBox.critical(self, "Hata", f"Bölümler ekranı açılırken hata oluştu:\n{str(e)}")
 
+
     def open_derslik_panel(self):
         try:
             from derslik_window import DerslikWindow
             self.derslik_window = DerslikWindow(self.bolum_id)
+            
+            # 💡 Derslik eklendikten sonra MainWindow’un butonlarını yenile
+            def update_from_child():
+                self.refresh_buttons()
+
+            # Hem kapatıldığında hem sinyal geldiğinde kontrol et
+            self.derslik_window.destroyed.connect(update_from_child)
+
+            # 🔁 Eğer DerslikWindow sınıfında özel sinyal varsa bağla
+            if hasattr(self.derslik_window, 'data_loaded'):
+                self.derslik_window.data_loaded.connect(update_from_child)
+
             self.derslik_window.show()
+
         except Exception as e:
-                QMessageBox.critical(self, "Hata", f"Derslik paneli açılırken hata oluştu:\n{str(e)}")
+            QMessageBox.critical(self, "Hata", f"Derslik paneli açılırken hata oluştu:\n{str(e)}")
+
+
+    def refresh_buttons(self):
+        """Derslik kontrolünü tekrar yapar ve butonları günceller."""
+        derslik_var = self.check_derslik_bilgisi()
+        if derslik_var:
+            self.sinav_button.setEnabled(True)
+            self.oturma_button.setEnabled(True)
+        else:
+            self.sinav_button.setEnabled(False)
+            self.oturma_button.setEnabled(False)
+
+
+
+
+
+
 
 
     def open_ders_panel(self):
@@ -269,7 +313,95 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Öğrenci Listesi ekranı açılırken hata oluştu:\n{str(e)}")
 
-        
+    
+
+    def clear_database(self):
+        import os, sqlite3
+        from PyQt6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Onay",
+            "⚠️ Tüm kayıtları (öğrenciler, dersler, sınav programı, oturma planı) silmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            db_path = os.path.abspath("/Users/USER/SinavTakvimiProjesi-2/sinav_takvimi.db")
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+
+            # 🔹 Dinamik tablo kontrolü
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [t[0] for t in cur.fetchall()]
+            silinenler = []
+
+            hedef_tablolar = [
+                "Ogrenci_Ders_Kayitlari",
+                "ogrenciler",
+                "dersler",
+                "Dersler",
+                "SinavProgrami",
+                "OturmaPlanlari",
+                
+            ]
+
+            for tablo in hedef_tablolar:
+                if tablo in tables:
+                    cur.execute(f"DELETE FROM {tablo}")
+                    silinenler.append(tablo)
+
+            conn.commit()
+            conn.close()
+
+            if silinenler:
+                QMessageBox.information(
+                    self,
+                    "Başarılı",
+                    f"🧹 Veritabanı temizlendi!\nSilinen tablolar:\n{', '.join(silinenler)}"
+                )
+            else:
+                QMessageBox.information(self, "Bilgi", "Silinecek tablo bulunamadı.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Temizleme işlemi başarısız:\n{e}")
+
+
+
+
+    def temizle_ogrenci_listesi(self):
+        import os, sqlite3
+        from PyQt6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Onay",
+            "⚠️ Sadece öğrenci ders kayıtlarını silmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            db_path = os.path.abspath("/Users/USER/SinavTakvimiProjesi-2/sinav_takvimi.db")
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+
+            cur.execute("DELETE FROM Ogrenci_Ders_Kayitlari")
+            conn.commit()
+            conn.close()
+
+            QMessageBox.information(self, "Başarılı", "🎓 Öğrenci kayıtları başarıyla temizlendi!")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Temizleme işlemi başarısız:\n{e}")
+
+
+
 
 
 

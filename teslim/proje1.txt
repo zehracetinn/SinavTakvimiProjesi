@@ -1,0 +1,3610 @@
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton,
+    QLineEdit, QMessageBox, QTableWidget, QTableWidgetItem
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainter, QPixmap
+import sqlite3
+
+
+class BolumWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Bölüm Yönetimi (Admin Modülü)")
+        self.setGeometry(400, 200, 600, 450)
+
+        # 🔹 Arka plan görseli yolu
+        self.bg_path = "/Users/USER/Desktop/SinavTakvimiProjesi/kou.jpg"
+
+        self.conn = sqlite3.connect("sinav_takvimi.db")
+        self.cur = self.conn.cursor()
+
+        self.setup_ui()
+        self.load_departments()
+
+    # 🔹 Arka plan resmi çizimi
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            painter.setOpacity(0.35)  # 🔸 %35 saydamlık
+            painter.drawPixmap(0, 0, scaled)
+        painter.setOpacity(1.0)
+        super().paintEvent(event)
+
+    def setup_ui(self):
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: black;
+            }
+            QLabel {
+                color: black;
+                font-size: 15px;
+                font-weight: 600;
+                background-color: rgba(255, 255, 255, 180);
+                border-radius: 4px;
+                padding: 2px 4px;
+            }
+            QLineEdit {
+                border: 2px solid #007b5e;
+                border-radius: 6px;
+                padding: 6px;
+                background-color: rgba(255, 255, 255, 220);
+                font-size: 14px;
+                color: black;
+            }
+            QLineEdit:focus {
+                border: 2px solid #005b44;
+                background-color: rgba(255, 255, 255, 240);
+            }
+            QPushButton {
+                border-radius: 6px;
+                padding: 8px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QTableWidget {
+                background-color: rgba(255, 255, 255, 230);
+                color: black;
+                border: 2px solid #007b5e;
+                border-radius: 6px;
+                gridline-color: #00823b;
+                selection-background-color: #c8f7c5;
+                selection-color: black;
+                font-size: 13px;
+            }
+            QHeaderView::section {
+                background-color: #00823b;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+
+        title = QLabel("🏫 Bölüm Yönetimi")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            background-color: rgba(0, 130, 59, 220);
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        """)
+
+        lbl_name = QLabel("Bölüm Adı:")
+        self.txt_name = QLineEdit()
+        self.txt_name.setPlaceholderText("Örn: Bilgisayar Mühendisliği")
+
+        btn_add = QPushButton("Bölüm Ekle")
+        btn_add.setStyleSheet("""
+            QPushButton { background-color: #00823b; color: white; }
+            QPushButton:hover { background-color: #006b30; }
+        """)
+        btn_add.clicked.connect(self.add_department)
+
+        btn_delete = QPushButton("Seçili Bölümü Sil")
+        btn_delete.setStyleSheet("""
+            QPushButton { background-color: #e74c3c; color: white; }
+            QPushButton:hover { background-color: #c0392b; }
+        """)
+        btn_delete.clicked.connect(self.delete_department)
+
+        # --- Tablo ---
+        self.tbl = QTableWidget()
+        self.tbl.setColumnCount(2)
+        self.tbl.setHorizontalHeaderLabels(["ID", "Bölüm Adı"])
+        self.tbl.setColumnWidth(1, 320)
+
+        hbox = QHBoxLayout()
+        hbox.addWidget(lbl_name)
+        hbox.addWidget(self.txt_name)
+        hbox.addWidget(btn_add)
+
+        vbox = QVBoxLayout()
+        vbox.addWidget(title)
+        vbox.addLayout(hbox)
+        vbox.addWidget(self.tbl)
+        vbox.addWidget(btn_delete)
+
+        self.setLayout(vbox)
+
+    # --- Veritabanı işlemleri ---
+    def load_departments(self):
+        self.tbl.setRowCount(0)
+        self.cur.execute("SELECT bolum_id, bolum_adi FROM Bolumler")
+        for row_idx, row_data in enumerate(self.cur.fetchall()):
+            self.tbl.insertRow(row_idx)
+            for col_idx, col_data in enumerate(row_data):
+                item = QTableWidgetItem(str(col_data))
+                item.setForeground(Qt.GlobalColor.black)
+                self.tbl.setItem(row_idx, col_idx, item)
+
+    def add_department(self):
+        bolum_adi = self.txt_name.text().strip()
+        if not bolum_adi:
+            QMessageBox.warning(self, "Uyarı", "Bölüm adı giriniz.")
+            return
+
+        self.cur.execute("INSERT INTO Bolumler (bolum_adi) VALUES (?)", (bolum_adi,))
+        self.conn.commit()
+        QMessageBox.information(self, "Başarılı", "Bölüm eklendi.")
+        self.load_departments()
+
+    def delete_department(self):
+        selected = self.tbl.currentRow()
+        if selected < 0:
+            QMessageBox.warning(self, "Uyarı", "Lütfen silinecek bölümü seçin.")
+            return
+
+        bolum_id = self.tbl.item(selected, 0).text()
+        self.cur.execute("DELETE FROM Bolumler WHERE bolum_id=?", (bolum_id,))
+        self.conn.commit()
+        QMessageBox.information(self, "Silindi", "Bölüm silindi.")
+        self.load_departments()
+# database_helper.py
+import os, sqlite3
+
+class DatabaseHelper:
+    _connection = None
+    _db_path = os.path.abspath("sinav_takvimi.db")  # <-- TEK KAYNAK
+
+    @staticmethod
+    def get_connection():
+        if DatabaseHelper._connection is None:
+            DatabaseHelper._connection = sqlite3.connect(
+                DatabaseHelper._db_path,
+                timeout=10,
+                check_same_thread=False,
+                isolation_level=None  # autocommit
+            )
+            # Güvenli foreign key vs.
+            DatabaseHelper._connection.execute("PRAGMA foreign_keys = ON;")
+        return DatabaseHelper._connection
+
+    @staticmethod
+    def get_db_path():
+        return DatabaseHelper._db_path
+
+    @staticmethod
+    def close_connection():
+        if DatabaseHelper._connection:
+            DatabaseHelper._connection.close()
+            DatabaseHelper._connection = None
+import sqlite3
+
+def create_database():
+    conn = sqlite3.connect("sinav_takvimi.db")
+    cursor = conn.cursor()
+
+    # Bölümler tablosu
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Bolumler (
+        bolum_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bolum_adi TEXT UNIQUE NOT NULL
+    );
+    """)
+
+    # Kullanıcılar tablosu
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Kullanicilar (
+        kullanici_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eposta TEXT UNIQUE NOT NULL,
+        sifre TEXT NOT NULL,
+        rol TEXT CHECK(rol IN ('Admin', 'Bölüm Koordinatörü')) NOT NULL,
+        bolum_id INTEGER,
+        FOREIGN KEY(bolum_id) REFERENCES Bolumler(bolum_id)
+    );
+    """)
+
+    # Derslikler tablosu
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Derslikler (
+        derslik_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        derslik_kodu TEXT NOT NULL,
+        derslik_adi TEXT NOT NULL,
+        kapasite INTEGER NOT NULL,
+        sira_sayisi INTEGER,
+        sutun_sayisi INTEGER,
+        bolum_id INTEGER,
+        FOREIGN KEY(bolum_id) REFERENCES Bolumler(bolum_id)
+    );
+    """)
+
+    # Dersler tablosu
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Dersler (
+        ders_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ders_kodu TEXT NOT NULL,
+        ders_adi TEXT NOT NULL,
+        ogretim_uyesi TEXT,
+        sinif INTEGER,
+        yapi TEXT CHECK(yapi IN ('Zorunlu', 'Seçmeli')),
+        bolum_id INTEGER,
+        FOREIGN KEY(bolum_id) REFERENCES Bolumler(bolum_id)
+    );
+    """)
+
+    # Öğrenciler tablosu
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Ogrenciler (
+        ogrenci_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ogrenci_no TEXT UNIQUE NOT NULL,
+        ad_soyad TEXT NOT NULL
+    );
+    """)
+
+    # Öğrenci - Ders eşleşmeleri
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Ogrenci_Ders_Kayitlari (
+        kayit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ogrenci_id INTEGER,
+        ders_id INTEGER,
+        FOREIGN KEY(ogrenci_id) REFERENCES Ogrenciler(ogrenci_id),
+        FOREIGN KEY(ders_id) REFERENCES Dersler(ders_id)
+    );
+    """)
+
+    # Varsayılan admin ekleme
+    cursor.execute("""
+    INSERT OR IGNORE INTO Kullanicilar (eposta, sifre, rol)
+    VALUES ('admin@kocaeli.edu.tr', 'admin123', 'Admin');
+    """)
+
+    conn.commit()
+    conn.close()
+    print("✅ Veritabanı başarıyla oluşturuldu!")
+
+if __name__ == "__main__":
+    create_database()
+
+import sqlite3
+import os # <--- DOSYA YOLU İÇİN EKLENDİ
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QListWidget
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QPainter # <--- GÖRSEL İŞLEMLERİ İÇİN EKLENDİ
+from database_helper import DatabaseHelper
+
+
+class DersListesiWindow(QWidget):
+    def __init__(self, bolum_id):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.setWindowTitle("📘 Ders Listesi ve Öğrenciler")
+        self.setGeometry(400, 200, 900, 600)
+        
+        # KODUN HER YERDE ÇALIŞMASI İÇİN GÖRSEL YOLUNU AYARLAYALIM
+        # Lütfen kou.jpg dosyasının ana proje dizininizde olduğundan emin olun.
+        self.background_image_path = self.prepare_background_image("kou.jpg") # <--- YENİ FONKSİYON
+        
+        self.setup_ui()
+        self.load_dersler()
+
+    def prepare_background_image(self, image_path, opacity=0.08):
+        """Verilen görseli şeffaflaştırır ve geçici bir dosyaya kaydeder."""
+        if not os.path.exists(image_path):
+            print(f"Uyarı: Arka plan görseli bulunamadı: {image_path}")
+            return None
+
+        original_pixmap = QPixmap(image_path)
+        if original_pixmap.isNull():
+            print(f"Uyarı: Görsel yüklenemedi: {image_path}")
+            return None
+            
+        # Şeffaf bir katman oluştur
+        transparent_pixmap = QPixmap(original_pixmap.size())
+        transparent_pixmap.fill(Qt.GlobalColor.transparent)
+
+        # Painter ile orijinal görseli şeffaf katmanın üzerine çiz
+        painter = QPainter(transparent_pixmap)
+        painter.setOpacity(opacity) # <--- GÖRSELİN SOLGUNLUĞU (0.0 ile 1.0 arası)
+        painter.drawPixmap(0, 0, original_pixmap)
+        painter.end()
+
+        # Yeni şeffaf görseli kaydet
+        output_path = "kou_bg_transparent.png"
+        transparent_pixmap.save(output_path)
+        return output_path
+
+    def setup_ui(self):
+        # Kocaeli Üniversitesi web sitesinden ilham alan renk paleti
+        kocaeli_yesil = "#38761d"
+        kocaeli_yesil_hover = "#4a9b2a"
+        acik_gri_zemin = "rgba(240, 242, 245, 0.85)" # Yazıların okunabilmesi için hafif beyazlatılmış
+        kenarlik_rengi = "#d0d0d0"
+        yazi_rengi_koyu = "#333333"
+
+        # ARKA PLAN GÖRSELİ STİLİ
+        background_style = ""
+        if self.background_image_path:
+            # Not: Windows'ta dosya yolları için ters slash yerine normal slash kullanmak daha güvenlidir.
+            safe_path = self.background_image_path.replace("\\", "/")
+            background_style = f"""
+                border-image: url({safe_path}) 0 0 0 0 stretch stretch;
+            """
+
+        self.setStyleSheet(f"""
+            /* Ana Pencereye Arka Planı Ekle */
+            DersListesiWindow {{
+                {background_style}
+            }}
+
+            QWidget {{
+                background-color: transparent; /* Arka planın görünmesi için */
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: {yazi_rengi_koyu};
+            }}
+
+            /* Liste ve Tablo stilleri (Okunabilirlik için yarı şeffaf arkaplan) */
+            QListWidget, QTableWidget {{
+                background-color: {acik_gri_zemin};
+                border: 1px solid {kenarlik_rengi};
+                border-radius: 5px;
+                font-size: 13px;
+            }}
+
+            QHeaderView::section {{
+                background-color: {kocaeli_yesil};
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+            }}
+            
+            QListWidget::item:selected {{
+                background-color: {kocaeli_yesil};
+                color: white;
+            }}
+
+            QListWidget::item:hover {{
+                background-color: #e6f7ff;
+            }}
+            
+            QPushButton {{
+                background-color: {kocaeli_yesil};
+                color: white;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 5px;
+                border: none;
+            }}
+
+            QPushButton:hover {{
+                background-color: {kocaeli_yesil_hover};
+            }}
+        """)
+
+        # Ana başlık
+        title = QLabel("📘 Ders Listesi ve Dersi Alan Öğrenciler")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(f"""
+            QLabel {{
+                background-color: {kocaeli_yesil};
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                padding: 12px;
+                border-radius: 5px;
+                margin: 5px;
+            }}
+        """)
+
+        # --- GERİ KALAN KODUNUZ AYNI ŞEKİLDE DEVAM EDİYOR ---
+        
+        self.ders_list = QListWidget()
+        self.ders_list.itemClicked.connect(self.show_dersi_alan_ogrenciler)
+        
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.setStyleSheet(f"alternate-background-color: rgba(220, 225, 230, 0.85);")
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(5, 0, 5, 5)
+        layout.setSpacing(10)
+        layout.addWidget(self.ders_list, 2)
+        layout.addWidget(self.table, 5)
+
+        vbox = QVBoxLayout()
+        vbox.setContentsMargins(0,0,0,0)
+        vbox.setSpacing(0)
+        vbox.addWidget(title)
+        vbox.addLayout(layout)
+        self.setLayout(vbox)
+
+    # ... (load_dersler ve show_dersi_alan_ogrenciler metodları burada)
+    # ...
+
+
+
+    # ------------------ DERSLERİ YÜKLE ------------------
+    def load_dersler(self):
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DISTINCT ders_kodu, ders_adi 
+                FROM Dersler
+                WHERE bolum_id=?
+                ORDER BY ders_kodu
+            """, (self.bolum_id,))
+            dersler = cur.fetchall()
+
+            if not dersler:
+                QMessageBox.information(self, "Bilgi", "Bu bölüme ait ders bulunamadı.")
+                return
+
+            for ders in dersler:
+                ders_kodu, ders_adi = ders
+                self.ders_list.addItem(f"{ders_kodu} – {ders_adi}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Dersler yüklenirken hata oluştu:\n{e}")
+
+    # ------------------ DERSİN ÖĞRENCİLERİNİ GÖSTER ------------------
+    def show_dersi_alan_ogrenciler(self, item):
+        try:
+            ders_kodu = item.text().split("–")[0].strip()
+
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ogrenci_no, ad_soyad
+                FROM Ogrenci_Ders_Kayitlari
+                WHERE ders_kodu=? AND bolum_id=?
+                ORDER BY ogrenci_no
+            """, (ders_kodu, self.bolum_id))
+            rows = cur.fetchall()
+
+            self.table.setRowCount(0)
+            if not rows:
+                QMessageBox.information(self, "Bilgi", "Bu dersi alan öğrenci bulunamadı.")
+                return
+
+            for i, (ogr_no, ad) in enumerate(rows):
+                self.table.insertRow(i)
+                self.table.setItem(i, 0, QTableWidgetItem(str(ogr_no)))
+                self.table.setItem(i, 1, QTableWidgetItem(str(ad)))
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Öğrenci listesi alınamadı:\n{e}")
+import os
+import sqlite3
+import pandas as pd
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
+    QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
+)
+from PyQt6.QtCore import Qt
+from database_helper import DatabaseHelper
+
+
+class DersYukleWindow(QWidget):
+    def __init__(self, bolum_id):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.setWindowTitle("📘 Ders Listesi Yükleme")
+        self.setGeometry(450, 250, 800, 500)
+        self.df = None
+        self.setup_ui()
+
+    # ---------------- UI ----------------
+    def setup_ui(self):
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            image_path = os.path.join(base_dir, 'kou.jpg').replace('\\', '/')
+        except NameError:
+            image_path = 'kou.jpg'
+
+        self.setStyleSheet(f"""
+            DersYukleWindow {{
+                background-image: url('{image_path}');
+                background-repeat: no-repeat;
+                background-position: center;
+                background-color: #F5F5F5;
+            }}
+        """)
+
+        title = QLabel("Ders Listesi Yükleme (Excel Dosyasından)")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            background-color: rgba(255, 255, 255, 0.75);
+            color: #2c3e50;
+            font-size: 20px;
+            font-weight: bold;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+        """)
+
+        button_style = """
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 5px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """
+
+        self.upload_btn = QPushButton("📂 Excel Dosyası Seç")
+        self.upload_btn.setStyleSheet(button_style)
+        self.upload_btn.clicked.connect(self.load_excel)
+
+        self.save_btn = QPushButton("💾 Veritabanına Kaydet")
+        self.save_btn.setStyleSheet(button_style)
+        self.save_btn.setEnabled(False)
+        self.save_btn.clicked.connect(self.save_to_db)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["Ders Kodu", "Ders Adı", "Öğretim Üyesi", "Sınıf", "Yapı"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+
+        self.table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #cccccc;
+                background-color: rgba(255, 255, 255, 0.85);
+                font-size: 13px;
+            }
+            QHeaderView::section {
+                background-color: #4CAF50;
+                color: white;
+                padding: 5px;
+                border: 1px solid #4CAF50;
+                font-weight: bold;
+            }
+            QTableWidget::item:alternate {
+                background-color: rgba(230, 230, 230, 0.8);
+            }
+        """)
+
+        layout = QVBoxLayout()
+        layout.addWidget(title)
+        layout.addWidget(self.upload_btn)
+        layout.addWidget(self.save_btn)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
+
+    # ---------------- EXCEL OKUMA ----------------
+    def load_excel(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)"
+        )
+        if not file_path:
+            return
+
+        try:
+            df_raw = pd.read_excel(file_path, header=None)
+            data = []
+            current_class = None
+
+            for i, row in df_raw.iterrows():
+                first_cell = str(row[0]).strip().lower() if pd.notna(row[0]) else ""
+
+                # “1. Sınıf”, “2. Sınıf” gibi satırları algıla
+                if "sınıf" in first_cell:
+                    current_class = first_cell.replace(".", "").replace("sınıf", "").strip()
+                    if not current_class.isdigit():
+                        current_class = ''.join([c for c in current_class if c.isdigit()])
+                    if not current_class:
+                        current_class = "1"
+                    continue
+
+                # Gerçek başlık satırını atla
+                if "ders kodu" in first_cell or "dersin" in str(row[1]).lower():
+                    continue
+
+                # Boş satırları geç
+                if pd.isna(row[0]) or pd.isna(row[1]) or pd.isna(row[2]):
+                    continue
+
+                data.append({
+                    "Ders Kodu": str(row[0]).strip(),
+                    "Ders Adı": str(row[1]).strip(),
+                    "Öğretim Üyesi": str(row[2]).strip(),
+                    "Sınıf": current_class if current_class else "1",
+                    "Yapı": "Zorunlu"  # varsayılan değer
+                })
+
+            if not data:
+                QMessageBox.critical(self, "Hata", "Hiç geçerli ders satırı bulunamadı!")
+                return
+
+            self.df = pd.DataFrame(data)
+            self.table.setRowCount(len(self.df))
+
+            for i, row in self.df.iterrows():
+                self.table.setItem(i, 0, QTableWidgetItem(row["Ders Kodu"]))
+                self.table.setItem(i, 1, QTableWidgetItem(row["Ders Adı"]))
+                self.table.setItem(i, 2, QTableWidgetItem(row["Öğretim Üyesi"]))
+                self.table.setItem(i, 3, QTableWidgetItem(str(row["Sınıf"])))
+                self.table.setItem(i, 4, QTableWidgetItem(row["Yapı"]))
+
+            self.save_btn.setEnabled(True)
+            QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{str(e)}")
+
+    # ---------------- VERİTABANINA KAYDETME ----------------
+    def save_to_db(self):
+        if self.df is None or self.df.empty:
+            QMessageBox.warning(self, "Uyarı", "Kaydedilecek veri yok!")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cursor = conn.cursor()
+
+            added, skipped = 0, 0
+            for _, row in self.df.iterrows():
+                ders_kodu = str(row["Ders Kodu"]).strip()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM Dersler WHERE ders_kodu=? AND bolum_id=?",
+                    (ders_kodu, self.bolum_id)
+                )
+                if cursor.fetchone()[0] > 0:
+                    skipped += 1
+                    continue
+
+                cursor.execute("""
+                    INSERT INTO Dersler (ders_kodu, ders_adi, ogretim_uyesi, sinif, yapi, bolum_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    ders_kodu,
+                    str(row["Ders Adı"]),
+                    str(row["Öğretim Üyesi"]),
+                    int(row["Sınıf"]),
+                    str(row["Yapı"]),
+                    self.bolum_id
+                ))
+                added += 1
+
+            conn.commit()  # autocommit modda olsa da güvenli
+            QMessageBox.information(self, "Başarılı", f"{added} ders eklendi, {skipped} atlandı.")
+            self.save_btn.setEnabled(False)
+
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Hata", str(e))
+import sqlite3
+from PyQt6 import QtGui, QtWidgets
+
+
+from PyQt6.QtWidgets import (
+    QWidget,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QMessageBox,
+    QSpinBox,
+    QComboBox,
+)
+from PyQt6.QtCore import Qt
+import sys, traceback
+
+
+def excepthook(type, value, tb):
+    print("".join(traceback.format_exception(type, value, tb)))
+    sys.__excepthook__(type, value, tb)
+
+
+sys.excepthook = excepthook
+def fade_image(pixmap, opacity=0.1, blur_radius=8):
+    """Resmi silikleştirip hafif blur uygular"""
+    img = QtGui.QImage(pixmap.size(), QtGui.QImage.Format.Format_ARGB32)
+    img.fill(QtGui.QColor(255, 255, 255, 0))
+    painter = QtGui.QPainter(img)
+    painter.setOpacity(opacity)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+
+    # 🔹 Blur efekti (Qt6 uyumlu)
+    blur = QtWidgets.QGraphicsBlurEffect()
+    blur.setBlurRadius(blur_radius)
+    scene = QtWidgets.QGraphicsScene()
+    item = QtWidgets.QGraphicsPixmapItem(QtGui.QPixmap.fromImage(img))
+    item.setGraphicsEffect(blur)
+    scene.addItem(item)
+
+    result = QtGui.QImage(img.size(), QtGui.QImage.Format.Format_ARGB32)
+    result.fill(QtGui.QColor(255, 255, 255, 0))
+    painter = QtGui.QPainter(result)
+    scene.render(painter)
+    painter.end()
+    return QtGui.QPixmap.fromImage(result)
+
+
+
+class DerslikWindow(QWidget):
+
+
+    from PyQt6.QtCore import pyqtSignal
+    data_loaded = pyqtSignal()  # 💡 Derslik eklendiğinde sinyal gönderir
+
+    def __init__(self, bolum_id):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.setWindowTitle("🏫 Derslik Yönetimi")
+        self.setGeometry(450, 200, 800, 500)
+        self.setup_ui()
+        self.load_data()
+
+    def setup_ui(self):
+        title = QLabel("Derslik Yönetimi")
+        title.setObjectName("titleLabel")
+        bolum_label = QLabel(f"Bölüm ID: {self.bolum_id}")
+        bolum_label.setObjectName("subLabel")
+        bolum_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bolum_label.setStyleSheet("font-size:14px; color:#555; margin-bottom:8px;")
+
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size:18px; font-weight:bold;")
+
+        # Derslik Bilgi Girişi
+        self.kod_input = QLineEdit()
+        self.kod_input.setPlaceholderText("Derslik Kodu (örnek: B101)")
+
+        self.ad_input = QLineEdit()
+        self.ad_input.setPlaceholderText("Derslik Adı (örnek: Yazılım Lab 1)")
+
+        self.kapasite_input = QSpinBox()
+        self.kapasite_input.setRange(1, 300)
+        self.kapasite_input.setPrefix("Kapasite: ")
+
+        self.sira_input = QSpinBox()
+        self.sira_input.setRange(1, 30)
+        self.sira_input.setPrefix("Boyuna sıra: ")
+
+        self.sutun_input = QSpinBox()
+        self.sutun_input.setRange(1, 30)
+        self.sutun_input.setPrefix("Enine sıra: ")
+
+        self.duzen_box = QComboBox()
+        self.duzen_box.addItems(["2'li", "3'lü"])
+
+        # Butonlar
+        self.add_btn = QPushButton("➕ Ekle / Güncelle")
+        self.add_btn.setStyleSheet(
+            "background-color:#27ae60; color:white; font-weight:bold;"
+        )
+        self.add_btn.clicked.connect(self.add_or_update_derslik)
+
+        self.del_btn = QPushButton("🗑️ Sil")
+        self.del_btn.setObjectName("deleteBtn")
+        self.del_btn.setStyleSheet(
+            "background-color:#c0392b; color:white; font-weight:bold;"
+        )
+        self.del_btn.clicked.connect(self.delete_derslik)
+
+        # Tablo
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(
+            ["ID", "Kodu", "Adı", "Kapasite", "Sıra", "Sütun", "Düzen"]
+        )
+
+        self.table.cellClicked.connect(self.select_row)
+
+        # Layout
+        form_layout = QVBoxLayout()
+        form_layout.addWidget(title)
+        form_layout.addWidget(bolum_label)
+        form_layout.addWidget(self.kod_input)
+        form_layout.addWidget(self.ad_input)
+        form_layout.addWidget(self.kapasite_input)
+        form_layout.addWidget(self.sira_input)
+        form_layout.addWidget(self.sutun_input)
+        form_layout.addWidget(self.duzen_box)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Derslik kodu veya ID ara...")
+
+        self.search_btn = QPushButton("🔍 Ara")
+        self.search_btn.setObjectName("searchBtn") 
+
+        self.search_btn.setStyleSheet(
+            "background-color:#2980b9; color:white; font-weight:bold;"
+        )
+        self.search_btn.clicked.connect(self.search_derslik)
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(self.search_btn)
+        form_layout.addLayout(search_layout)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addWidget(self.del_btn)
+
+        form_layout.addLayout(btn_layout)
+        form_layout.addWidget(self.table)
+        self.setLayout(form_layout)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setDefaultSectionSize(120)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(False)
+        self.table.setShowGrid(True)
+        # --- Arka plan resmi ekleme ---
+        background = QtGui.QPixmap("kou.jpg")
+        background = background.scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        background = fade_image(background, opacity=0.15)  # 💡 silikleştir
+
+        palette = self.palette()
+        palette.setBrush(self.backgroundRole(), QtGui.QBrush(background))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+
+        # === GLOBAL THEME (KOU tarzı) ===
+        self.setStyleSheet(
+            """
+           
+    
+        QWidget {
+            background: #f2f4f7;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            color: #1d2939;
+    }
+
+         /* Başlıklar */
+         QLabel#titleLabel {
+             font-size: 24px;
+            font-weight: 700;
+            color: #1f4d2c; /* koyu yeşil ton */
+            letter-spacing: 0.2px;
+    }
+    QLabel#subLabel {
+        font-size: 14px;
+        color: #667085;
+    }
+
+    /* Metin girişleri */
+    QLineEdit, QSpinBox, QComboBox {
+        background: #ffffff;
+        border: 1px solid #d0d5dd;
+        border-radius: 8px;
+        padding: 8px 10px;
+        min-height: 34px;
+    }
+    QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+        border: 1px solid #2e7d32; /* ana yeşil */
+        box-shadow: none;
+    }
+
+    /* Butonlar – temel */
+    QPushButton {
+        background: #2e7d32;      /* ana yeşil */
+        color: #ffffff;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 14px;
+        min-height: 36px;
+    }
+    QPushButton:hover {
+        background: #256a29;
+    }
+    QPushButton:disabled {
+        background: #a6b8a7;
+        color: #eef3ee;
+    }
+
+    /* Ara butonu – ikincil/düz renk */
+    QPushButton#searchBtn {
+        background: #1f4d2c;   /* daha koyu yeşil */
+    }
+    QPushButton#searchBtn:hover {
+        background: #183f24;
+    }
+
+    /* Sil butonu – uyarı */
+    QPushButton#deleteBtn {
+        background: #b42318;  /* kırmızı */
+    }
+    QPushButton#deleteBtn:hover {
+        background: #9a1e16;
+    }
+
+    /* Tablo */
+    QTableWidget {
+        background: #ffffff;
+        border: 1px solid #d0d5dd;
+        border-radius: 10px;
+        gridline-color: #e4e7ec;
+    }
+    QHeaderView::section {
+        background: #2e7d32;
+        color: white;
+        font-weight: 700;
+        padding: 8px;
+        border: none;
+    }
+    QTableWidget::item {
+        padding: 6px;
+    }
+""")
+      
+
+
+        
+
+    def load_data(self):
+        conn = sqlite3.connect("sinav_takvimi.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT derslik_id, derslik_kodu, derslik_adi, kapasite, sira_sayisi, sutun_sayisi, duzen_tipi
+            FROM Derslikler
+            WHERE bolum_id = ?
+        """,
+            (self.bolum_id,),
+        )
+
+        data = cursor.fetchall()
+        conn.close()
+
+        self.table.setRowCount(len(data))
+        for row_idx, row_data in enumerate(data):
+            for col_idx, col_data in enumerate(row_data):
+                self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(col_data)))
+
+    def add_or_update_derslik(self):
+        kod = self.kod_input.text().strip()
+        ad = self.ad_input.text().strip()
+        kapasite = self.kapasite_input.value()
+        sira = self.sira_input.value()
+        sutun = self.sutun_input.value()
+
+        if not kod or not ad:
+            QMessageBox.warning(self, "Uyarı", "Lütfen tüm alanları doldurun.")
+            return
+
+        conn = sqlite3.connect("sinav_takvimi.db")
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT derslik_id FROM Derslikler WHERE derslik_kodu = ? AND bolum_id = ?
+        """,
+            (kod, self.bolum_id),
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            duzen_tipi = self.duzen_box.currentText()
+            cursor.execute(
+                """
+                UPDATE Derslikler
+                SET derslik_adi = ?, kapasite = ?, sira_sayisi = ?, sutun_sayisi = ?, duzen_tipi = ?
+                WHERE derslik_kodu = ? AND bolum_id = ?
+            """,
+                (ad, kapasite, sira, sutun, duzen_tipi, kod, self.bolum_id),
+            )
+            QMessageBox.information(self, "Güncellendi", f"{kod} güncellendi.")
+        else:
+            duzen_tipi = self.duzen_box.currentText()
+            cursor.execute(
+                """
+                INSERT INTO Derslikler (derslik_kodu, derslik_adi, kapasite, sira_sayisi, sutun_sayisi, duzen_tipi, bolum_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                (kod, ad, kapasite, sira, sutun, duzen_tipi, self.bolum_id),
+            )
+            QMessageBox.information(self, "Eklendi", f"{kod} başarıyla eklendi.")
+
+        conn.commit()
+        conn.close()
+        self.load_data()
+        self.data_loaded.emit()  # ✅ Kayıt sonrası sinyal gönder
+
+
+    def delete_derslik(self):
+        selected = self.table.currentRow()
+        if selected < 0:
+            QMessageBox.warning(self, "Uyarı", "Silmek için bir satır seçin.")
+            return
+
+        derslik_id = self.table.item(selected, 0).text()
+
+        conn = sqlite3.connect("sinav_takvimi.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Derslikler WHERE derslik_id = ?", (derslik_id,))
+        conn.commit()
+        conn.close()
+
+        QMessageBox.information(self, "Silindi", "Derslik başarıyla silindi.")
+        self.load_data()
+
+    def select_row(self, row, col):
+
+        try:
+            self.kod_input.setText(self.table.item(row, 1).text())
+            self.ad_input.setText(self.table.item(row, 2).text())
+            self.kapasite_input.setValue(int(self.table.item(row, 3).text()))
+            self.sira_input.setValue(int(self.table.item(row, 4).text()))
+            self.sutun_input.setValue(int(self.table.item(row, 5).text()))
+            duzen = self.table.item(row, 6)
+            if duzen:
+                ix = self.duzen_box.findText(duzen.text())
+                if ix >= 0:
+                    self.duzen_box.setCurrentIndex(ix)
+        except Exception as e:
+            QMessageBox.warning(self, "Hata", f"Satır seçme hatası:\n{e}")
+
+    def search_derslik(self):
+        print("arama yapılıyor ...")
+        text = self.search_input.text().strip()
+        if not text:
+            self.load_data()
+            return
+
+        conn = sqlite3.connect("sinav_takvimi.db")
+        cursor = conn.cursor()
+
+        # Arama sorgusunu derslik adı ve ID'yi daha güvenilir bir şekilde arayacak şekilde güncelledik.
+        query = """
+            SELECT derslik_id, derslik_kodu, derslik_adi, kapasite, sira_sayisi, sutun_sayisi, duzen_tipi
+            FROM Derslikler
+            WHERE (derslik_kodu LIKE ? OR derslik_adi LIKE ? OR derslik_id || '' LIKE ?) AND bolum_id = ?
+        """
+
+        # Sorgudaki '?' sayısı arttığı için parametreleri de güncelledik.
+        search_term = f"%{text}%"
+        cursor.execute(query, (search_term, search_term, search_term, self.bolum_id))
+
+        data = cursor.fetchall()
+        conn.close()
+
+        self.table.setRowCount(len(data))
+        for row_idx, row_data in enumerate(data):
+            for col_idx, col_data in enumerate(row_data):
+                self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(col_data)))
+                
+
+    def resizeEvent(self, event):
+        background = QtGui.QPixmap("kou.jpg")
+        background = background.scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation
+    )
+        background = fade_image(background, opacity=0.1, blur_radius=10)
+        palette = self.palette()
+        palette.setBrush(self.backgroundRole(), QtGui.QBrush(background))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+        super().resizeEvent(event)
+
+
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit,
+    QComboBox, QMessageBox, QTableWidget, QTableWidgetItem
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainter, QPixmap
+import sqlite3
+
+
+class KullaniciWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Kullanıcı Yönetimi (Admin Modülü)")
+        self.setGeometry(400, 200, 700, 520)
+
+        # 🔹 Arka plan görseli yolu
+        self.bg_path =" C:\\Users\\PC\\Documents\\GitHub\\SinavTakvimiProjesi\\kou.jpg"
+
+        self.conn = sqlite3.connect("sinav_takvimi.db")
+        self.cur = self.conn.cursor()
+
+        self.setup_ui()
+        self.load_users()
+
+    # 🔹 Arka plan resmi
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            painter.setOpacity(0.35)
+            painter.drawPixmap(0, 0, scaled)
+        painter.setOpacity(1.0)
+        super().paintEvent(event)
+
+    def setup_ui(self):
+        self.setStyleSheet("""
+            QWidget { font-family: 'Segoe UI', Arial, sans-serif; color: black; }
+            QLabel {
+                color: black; font-size: 15px; font-weight: 600;
+                background-color: rgba(255, 255, 255, 180);
+                border-radius: 4px; padding: 2px 4px;
+            }
+            QLineEdit, QComboBox {
+                border: 2px solid #007b5e; border-radius: 6px; padding: 6px;
+                background-color: rgba(255, 255, 255, 220); font-size: 14px; color: black;
+            }
+            QLineEdit:focus, QComboBox:focus {
+                border: 2px solid #005b44; background-color: rgba(255, 255, 255, 240);
+            }
+            QPushButton { border-radius: 6px; padding: 8px; font-weight: bold; font-size: 14px; }
+            QTableWidget {
+                background-color: rgba(255, 255, 255, 230);
+                color: black; border: 2px solid #007b5e; border-radius: 6px;
+                gridline-color: #00823b; selection-background-color: #c8f7c5;
+                selection-color: black; font-size: 13px;
+            }
+            QHeaderView::section {
+                background-color: #00823b; color: white; padding: 6px;
+                font-weight: bold; border: none;
+            }
+        """)
+
+        # --- Başlık ---
+        title = QLabel("👤 Kullanıcı Yönetimi")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            background-color: rgba(0, 130, 59, 220);
+            color: white; font-size: 18px; font-weight: bold;
+            padding: 10px; border-radius: 4px; margin-bottom: 10px;
+        """)
+
+        # --- Kullanıcı ekleme alanı ---
+        lbl_email = QLabel("E-posta:")
+        self.txt_email = QLineEdit()
+        lbl_pass = QLabel("Şifre:")
+        self.txt_pass = QLineEdit()
+        self.txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
+
+        lbl_role = QLabel("Rol:")
+        self.cmb_role = QComboBox()
+        self.cmb_role.addItems(["Admin", "Bölüm Koordinatörü"])
+
+        lbl_bolum = QLabel("Bölüm:")
+        self.cmb_bolum = QComboBox()
+        self.load_departments()
+
+        btn_add = QPushButton("Kullanıcı Ekle")
+        btn_add.setStyleSheet("""
+            QPushButton { background-color: #00823b; color: white; }
+            QPushButton:hover { background-color: #006b30; }
+        """)
+        btn_add.clicked.connect(self.add_user)
+
+        # --- Kullanıcı tablosu ---
+        self.tbl_users = QTableWidget()
+        self.tbl_users.setColumnCount(4)
+        self.tbl_users.setHorizontalHeaderLabels(["ID", "E-posta", "Rol", "Bölüm"])
+        self.tbl_users.setColumnWidth(1, 200)
+
+        btn_delete = QPushButton("Seçili Kullanıcıyı Sil")
+        btn_delete.setStyleSheet("""
+            QPushButton { background-color: #e74c3c; color: white; }
+            QPushButton:hover { background-color: #c0392b; }
+        """)
+        btn_delete.clicked.connect(self.delete_user)
+
+        # --- Layout ---
+        form = QHBoxLayout()
+        form.setSpacing(8)
+        form.addWidget(lbl_email)
+        form.addWidget(self.txt_email)
+        form.addWidget(lbl_pass)
+        form.addWidget(self.txt_pass)
+        form.addWidget(lbl_role)
+        form.addWidget(self.cmb_role)
+        form.addWidget(lbl_bolum)
+        form.addWidget(self.cmb_bolum)
+        form.addWidget(btn_add)
+
+        vbox = QVBoxLayout()
+        vbox.setSpacing(10)
+        vbox.addWidget(title)
+        vbox.addLayout(form)
+        vbox.addWidget(self.tbl_users)
+        vbox.addWidget(btn_delete)
+        self.setLayout(vbox)
+
+    # --- Veritabanı işlemleri ---
+    def load_departments(self):
+        self.cmb_bolum.clear()
+        self.cur.execute("SELECT bolum_adi FROM Bolumler")
+        for row in self.cur.fetchall():
+            self.cmb_bolum.addItem(row[0])
+
+    def load_users(self):
+        self.tbl_users.setRowCount(0)
+        query = """
+            SELECT K.kullanici_id, K.eposta, K.rol, B.bolum_adi
+            FROM Kullanicilar K
+            LEFT JOIN Bolumler B ON K.bolum_id = B.bolum_id
+        """
+        self.cur.execute(query)
+        for row_idx, row_data in enumerate(self.cur.fetchall()):
+            self.tbl_users.insertRow(row_idx)
+            for col_idx, col_data in enumerate(row_data):
+                item = QTableWidgetItem(str(col_data))
+                item.setForeground(Qt.GlobalColor.black)
+                self.tbl_users.setItem(row_idx, col_idx, item)
+
+    def add_user(self):
+        try:
+            email = self.txt_email.text().strip()
+            sifre = self.txt_pass.text().strip()
+            rol = self.cmb_role.currentText()
+            bolum_adi = self.cmb_bolum.currentText()
+
+            if not email or not sifre:
+                QMessageBox.warning(self, "Uyarı", "Lütfen e-posta ve şifre giriniz.")
+                return
+
+            # Bölüm ID'sini al
+            self.cur.execute("SELECT bolum_id FROM Bolumler WHERE bolum_adi=?", (bolum_adi,))
+            result = self.cur.fetchone()
+
+            if result is None:
+                QMessageBox.critical(self, "Hata", f"Bölüm '{bolum_adi}' bulunamadı!")
+                return
+
+            bolum_id = result[0]
+
+            # E-posta zaten var mı kontrol et
+            self.cur.execute("SELECT COUNT(*) FROM Kullanicilar WHERE eposta=?", (email,))
+            if self.cur.fetchone()[0] > 0:
+                QMessageBox.warning(self, "Uyarı", "Bu e-posta adresi zaten kayıtlı!")
+                return
+
+            # Yeni kullanıcıyı ekle
+            self.cur.execute("""
+                INSERT INTO Kullanicilar (eposta, sifre, rol, bolum_id)
+                VALUES (?, ?, ?, ?)
+            """, (email, sifre, rol, bolum_id))
+
+            self.conn.commit()
+            QMessageBox.information(self, "Başarılı", "Kullanıcı başarıyla eklendi.")
+            self.load_users()
+
+            # Alanları temizle
+            self.txt_email.clear()
+            self.txt_pass.clear()
+            self.cmb_role.setCurrentIndex(0)
+
+        except sqlite3.Error as e:
+            QMessageBox.critical(self, "Veritabanı Hatası", f"SQLite hatası oluştu:\n{e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Beklenmeyen bir hata oluştu:\n{e}")
+
+    def delete_user(self):
+        selected = self.tbl_users.currentRow()
+        if selected < 0:
+            QMessageBox.warning(self, "Uyarı", "Lütfen silinecek kullanıcıyı seçin.")
+            return
+
+        user_id = self.tbl_users.item(selected, 0).text()
+        self.cur.execute("DELETE FROM Kullanicilar WHERE kullanici_id=?", (user_id,))
+        self.conn.commit()
+        QMessageBox.information(self, "Silindi", "Kullanıcı silindi.")
+        self.load_users()
+import sys
+
+
+
+import sqlite3
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton,
+    QVBoxLayout, QMessageBox
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainter, QPixmap, QBrush, QColor
+
+class LoginWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Sınav Takvimi Giriş Ekranı")
+        self.setGeometry(500, 250, 420, 280)
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"
+        self.setup_ui()
+
+    def paintEvent(self, event):
+        """Arka plan resmini çiz"""
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                   Qt.TransformationMode.SmoothTransformation)
+            painter.setOpacity(0.4)  # 🔹 %40 saydamlık (silik görünüm)
+            painter.drawPixmap(0, 0, scaled)
+        painter.setOpacity(1.0)  # Normal saydamlığa geri dön
+        super().paintEvent(event)
+
+    def setup_ui(self):
+        # --- Genel Stil ---
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #003300;
+            }
+            QLabel {
+                font-size: 15px;
+                font-weight: 600;
+                color: #004d26;
+                background-color: rgba(255, 255, 255, 180);
+                border-radius: 4px;
+                padding: 2px 4px;
+            }
+            QLineEdit {
+                border: 2px solid #007b5e;
+                border-radius: 6px;
+                padding: 6px;
+                background-color: rgba(255, 255, 255, 210);
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #005b44;
+                background-color: rgba(255, 255, 255, 235);
+            }
+            QPushButton {
+                background-color: #00823b;
+                color: white;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #006b30;
+            }
+        """)
+
+        # --- Başlık ---
+        self.header = QLabel("Kocaeli Üniversitesi Dinamik Sınav Takvimi Sistemi")
+        self.header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.header.setStyleSheet("""
+            background-color: rgba(0, 130, 59, 200);
+            color: white;
+            font-size: 17px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        """)
+
+        # --- E-posta ---
+        self.email_label = QLabel("E-posta Adresi")
+        self.email_input = QLineEdit()
+        self.email_input.setPlaceholderText("örnek: admin@kocaeli.edu.tr")
+
+        # --- Şifre ---
+        self.password_label = QLabel("Şifre")
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setPlaceholderText("Şifrenizi girin")
+
+        # --- Giriş butonu ---
+        self.login_button = QPushButton("Giriş Yap")
+        self.login_button.clicked.connect(self.login_action)
+
+        # --- Düzen ---
+        vbox = QVBoxLayout()
+        vbox.setSpacing(10)
+        vbox.addWidget(self.header)
+        vbox.addWidget(self.email_label)
+        vbox.addWidget(self.email_input)
+        vbox.addWidget(self.password_label)
+        vbox.addWidget(self.password_input)
+        vbox.addWidget(self.login_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.setLayout(vbox)
+
+    def login_action(self):
+        eposta = self.email_input.text().strip()
+        sifre = self.password_input.text().strip()
+
+        if not eposta or not sifre:
+            QMessageBox.warning(self, "Uyarı", "E-posta ve şifre alanı boş bırakılamaz.")
+            return
+
+        try:
+            conn = sqlite3.connect("sinav_takvimi.db")
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT rol, bolum_id FROM Kullanicilar
+                WHERE eposta = ? AND sifre = ?
+            """, (eposta, sifre))
+            result = cursor.fetchone()
+            conn.close()
+
+            if result:
+                rol, bolum_id = result
+                from main_window import MainWindow
+                self.main_window = MainWindow(rol, bolum_id)
+                self.main_window.show()
+                self.close()
+            else:
+                QMessageBox.critical(self, "Hata", "Geçersiz e-posta veya şifre!")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Veritabanı Hatası", str(e))
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = LoginWindow()
+    window.show()
+    sys.exit(app.exec())
+import sys
+from PyQt6.QtWidgets import QSizePolicy
+import sqlite3
+from PyQt6.QtGui import QPixmap, QPainter
+
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
+
+class MainWindow(QWidget):
+    def __init__(self, rol, bolum_id):
+        super().__init__()
+        self.rol = rol
+        self.bolum_id = bolum_id
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"  # 💾 arka plan görseli
+
+        self.setWindowTitle("Sınav Takvimi Ana Menü")
+        self.setGeometry(450, 200, 600, 400)
+        self.setup_ui()
+
+
+
+    def paintEvent(self, event):
+        """Arka plan resmini ekrana uygula"""
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            painter.setOpacity(0.12)  # arka plan saydamlığı (0.0–1.0)
+            painter.drawPixmap(0, 0, scaled)
+        painter.end()
+   
+
+    def setup_ui(self):
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #F8F9F9;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2E2E2E;
+            }
+
+            QLabel#titleLabel {
+                color: #1B5E20;
+                font-size: 20px;
+                font-weight: 600;
+                margin-bottom: 10px;
+            }
+
+            QLabel#subtitleLabel {
+                color: #4E4E4E;
+                font-size: 13px;
+                margin-bottom: 20px;
+            }
+
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+
+            QPushButton:hover {
+                background-color: #1B5E20;
+            }
+
+            QPushButton:disabled {
+                background-color: #A5D6A7;
+                color: #F1F8E9;
+            }
+
+            QScrollArea, QListWidget {
+                background-color: white;
+                border: 1px solid #C8E6C9;
+                border-radius: 8px;
+            }
+        """)
+
+
+
+        title = QLabel("Kocaeli Üniversitesi Bilgi Yönetim Sistemleri")
+        title.setObjectName("titleLabel")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        subtitle = QLabel(f"Giriş yapan rol: {self.rol}")
+        subtitle.setObjectName("subtitleLabel")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+
+       
+
+
+        # Ortak menü
+        btn_logout = QPushButton("Çıkış Yap")
+        btn_logout.setStyleSheet("background-color:#c0392b; color:white; font-weight:bold; padding:7px;")
+        try:
+            btn_logout.clicked.disconnect()
+        except TypeError:
+            pass
+        btn_logout.clicked.connect(self.logout)
+
+        vbox = QVBoxLayout()
+        vbox.setSpacing(8)
+        vbox.setContentsMargins(20, 20, 20, 20)
+
+        vbox.addWidget(title)
+        vbox.addWidget(subtitle)
+
+        # Rol bazlı menü oluşturma
+        if self.rol == "Admin":
+            vbox.addWidget(self.create_button("👤 Kullanıcı Yönetimi", self.open_user_management))
+            vbox.addWidget(self.create_button("🏫 Bölümleri Görüntüle", self.open_departments))
+
+        elif self.rol == "Bölüm Koordinatörü":
+            vbox.addWidget(self.create_button("🏢 Derslik Yönetimi", self.open_derslik_panel))
+            vbox.addWidget(self.create_button("📘 Ders Listesi Yükle", self.open_ders_panel))
+            vbox.addWidget(self.create_button("🎓 Öğrenci Listesi Yükle", self.open_ogrenci_panel))
+
+            # 🟢 Yeni Menü Butonları (başlangıçta devre dışı)
+            self.ogrenci_listesi_button = self.create_button("👩‍🎓 Öğrenci Listesi Görüntüle", self.open_ogrenci_listesi_panel)
+            self.ders_listesi_button = self.create_button("📖 Ders Listesi Görüntüle", self.open_ders_listesi_panel)
+            self.ogrenci_listesi_button.setEnabled(False)
+            self.ders_listesi_button.setEnabled(False)
+            vbox.addWidget(self.ogrenci_listesi_button)
+            vbox.addWidget(self.ders_listesi_button)
+            
+            
+            btnTemizle = QPushButton("Veritabanını Temizle", self)
+            btnTemizle.setGeometry(50, 400, 200, 40)
+            btnTemizle.clicked.connect(self.clear_database)
+          
+
+
+            vbox.addWidget(btnTemizle)
+
+            btnTemizleOgrenci = QPushButton("Öğrenci Tablosunu Temizle", self)
+            btnTemizleOgrenci.setGeometry(50, 450, 200, 40)
+            btnTemizleOgrenci.clicked.connect(self.temizle_ogrenci_listesi)
+            vbox.addWidget(btnTemizleOgrenci)
+
+
+            # 🔍 Derslik kontrolü
+            derslik_var = self.check_derslik_bilgisi()
+
+            if not derslik_var:
+                self.sinav_button = self.create_button("📅 Sınav Programı Oluştur", self.show_derslik_uyari)
+                self.oturma_button = self.create_button("🪑 Oturma Planı", self.show_derslik_uyari)
+                self.sinav_button.setEnabled(False)
+                self.oturma_button.setEnabled(False)
+                vbox.addWidget(self.sinav_button)
+                vbox.addWidget(self.oturma_button)
+            else:
+                self.sinav_button = self.create_button("📅 Sınav Programı Oluştur", self.open_sinav_panel)
+                self.oturma_button = self.create_button("🪑 Oturma Planı", self.open_oturma_plan_panel)
+                vbox.addWidget(self.sinav_button)
+                vbox.addWidget(self.oturma_button)
+
+
+        # buradan SONRA gelen kısım (aşağıdakiler) kalacak 👇
+        vbox.addStretch()
+        vbox.addWidget(btn_logout)
+        vbox.setSpacing(10)
+        vbox.setContentsMargins(40, 20, 40, 20)
+        self.setLayout(vbox)
+
+
+    def create_button(self, text, func):
+        btn = QPushButton(text)
+        btn.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                color: #1B5E20;
+                border: 2px solid #1B5E20;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-weight: 600;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #2E7D32;
+                color: white;
+            }
+            QPushButton:disabled {
+                background-color: #E0E0E0;
+                color: #9E9E9E;
+                border: 2px solid #BDBDBD;
+            }
+        """)
+        btn.clicked.connect(func)
+        return btn
+
+
+    # --- Menü Fonksiyonları ---
+    def open_user_management(self):
+        try:
+            from kullanici_window import KullaniciWindow
+            self.user_window = KullaniciWindow()
+            self.user_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Kullanıcı yönetimi ekranı açılırken hata oluştu:\n{str(e)}")
+
+    def open_departments(self):
+        try:
+            from bolum_window import BolumWindow
+            self.bolum_window = BolumWindow()
+            self.bolum_window.show()
+        except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Bölümler ekranı açılırken hata oluştu:\n{str(e)}")
+
+
+    def open_derslik_panel(self):
+        try:
+            from derslik_window import DerslikWindow
+            self.derslik_window = DerslikWindow(self.bolum_id)
+            
+            # 💡 Derslik eklendikten sonra MainWindow’un butonlarını yenile
+            def update_from_child():
+                self.refresh_buttons()
+
+            # Hem kapatıldığında hem sinyal geldiğinde kontrol et
+            self.derslik_window.destroyed.connect(update_from_child)
+
+            # 🔁 Eğer DerslikWindow sınıfında özel sinyal varsa bağla
+            if hasattr(self.derslik_window, 'data_loaded'):
+                self.derslik_window.data_loaded.connect(update_from_child)
+
+            self.derslik_window.show()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Derslik paneli açılırken hata oluştu:\n{str(e)}")
+
+
+    def refresh_buttons(self):
+        """Derslik kontrolünü tekrar yapar ve butonları günceller."""
+        derslik_var = self.check_derslik_bilgisi()
+        if derslik_var:
+            self.sinav_button.setEnabled(True)
+            self.oturma_button.setEnabled(True)
+        else:
+            self.sinav_button.setEnabled(False)
+            self.oturma_button.setEnabled(False)
+
+
+
+
+
+
+
+
+    def open_ders_panel(self):
+        try:
+            from ders_yukle_window import DersYukleWindow
+            self.ders_window = DersYukleWindow(self.bolum_id)
+            self.ders_window.show()
+        except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Ders paneli açılırken hata oluştu:\n{str(e)}")
+
+    def open_ogrenci_panel(self):
+        try:
+            from ogrenci_yukle_window import OgrenciYukleWindow
+
+            self.ogrenci_window = OgrenciYukleWindow(self.bolum_id)
+
+        # 💡 Excel başarıyla yüklendiğinde sinyal gönderir
+            self.ogrenci_window.data_loaded.connect(self.enable_menus_after_excel)
+
+            self.ogrenci_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Öğrenci yükleme ekranı açılırken hata oluştu:\n{str(e)}")
+
+
+
+
+    def open_ders_listesi_panel(self):
+        try:
+            from ders_listesi_window import DersListesiWindow
+            self.ders_listesi_window = DersListesiWindow(self.bolum_id)
+            self.ders_listesi_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Ders Listesi ekranı açılırken hata oluştu:\n{str(e)}")
+
+
+
+    def open_sinav_panel(self):
+        try:
+            from sinav_programi_window import SinavProgramiWindow
+            self.sinav_window = SinavProgramiWindow(self.bolum_id)
+            self.sinav_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Sınav Programı ekranı açılırken hata oluştu:\n{str(e)}")
+        
+
+    def open_oturma_plan_panel(self):
+        try:
+            from oturma_plan_window import OturmaPlanWindow
+            self.oturma_window = OturmaPlanWindow(self.bolum_id)
+            self.oturma_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Oturma Planı ekranı açılırken hata oluştu:\n{str(e)}")
+
+
+
+    def open_ogrenci_listesi_panel(self):
+        try:
+            from ogrenci_listesi_window import OgrenciListesiWindow
+            self.ogrenci_listesi_window = OgrenciListesiWindow(self.bolum_id)
+            self.ogrenci_listesi_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Öğrenci Listesi ekranı açılırken hata oluştu:\n{str(e)}")
+
+    
+
+    def clear_database(self):
+        import os, sqlite3
+        from PyQt6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Onay",
+            "⚠️ Tüm kayıtları (öğrenciler, dersler, sınav programı, oturma planı) silmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            db_path = os.path.abspath("/Users/USER/SinavTakvimiProjesi-2/sinav_takvimi.db")
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+
+            # 🔹 Dinamik tablo kontrolü
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [t[0] for t in cur.fetchall()]
+            silinenler = []
+
+            hedef_tablolar = [
+                "Ogrenci_Ders_Kayitlari",
+                "ogrenciler",
+                "dersler",
+                "Dersler",
+                "SinavProgrami",
+                "OturmaPlanlari",
+                
+            ]
+
+            for tablo in hedef_tablolar:
+                if tablo in tables:
+                    cur.execute(f"DELETE FROM {tablo}")
+                    silinenler.append(tablo)
+
+            conn.commit()
+            conn.close()
+
+            if silinenler:
+                QMessageBox.information(
+                    self,
+                    "Başarılı",
+                    f"🧹 Veritabanı temizlendi!\nSilinen tablolar:\n{', '.join(silinenler)}"
+                )
+            else:
+                QMessageBox.information(self, "Bilgi", "Silinecek tablo bulunamadı.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Temizleme işlemi başarısız:\n{e}")
+
+
+
+
+    def temizle_ogrenci_listesi(self):
+        import os, sqlite3
+        from PyQt6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Onay",
+            "⚠️ Sadece öğrenci ders kayıtlarını silmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            db_path = os.path.abspath("/Users/USER/SinavTakvimiProjesi-2/sinav_takvimi.db")
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+
+            cur.execute("DELETE FROM Ogrenci_Ders_Kayitlari")
+            conn.commit()
+            conn.close()
+
+            QMessageBox.information(self, "Başarılı", "🎓 Öğrenci kayıtları başarıyla temizlendi!")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Temizleme işlemi başarısız:\n{e}")
+
+
+
+
+
+
+    def logout(self):
+        QMessageBox.information(self, "Çıkış", "Oturum sonlandırıldı.")
+        self.close()
+    def enable_menus_after_excel(self):
+        try:
+            # 🎯 Öğrenci ve Ders Listesi menülerini aktif et
+            self.ogrenci_listesi_button.setEnabled(True)
+            self.ders_listesi_button.setEnabled(True)
+
+            QMessageBox.information(
+                self,
+                "Bilgi",
+                "🎉 Excel başarıyla yüklendi! Artık Öğrenci ve Ders Listesi menüleri aktif."
+            )
+            self.open_ogrenci_listesi_panel()
+            self.open_ders_listesi_panel()
+
+
+        except Exception as e:
+            QMessageBox.warning(self, "Uyarı", f"Menüler aktif edilirken hata oluştu:\n{e}")
+
+
+
+    def check_derslik_bilgisi(self):
+        """Derslik tablosunda kayıt var mı kontrol eder"""
+        try:
+            conn = sqlite3.connect("sinav_takvimi.db")
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM Derslikler WHERE bolum_id=?", (self.bolum_id,))
+            count = cur.fetchone()[0]
+            conn.close()
+            return count > 0
+        except Exception as e:
+            QMessageBox.warning(self, "Uyarı", f"Derslik kontrolü yapılırken hata oluştu:\n{e}")
+            return False
+
+    def show_derslik_uyari(self):
+        QMessageBox.warning(
+            self,
+            "Uyarı",
+            "Derslik bilgileri girilmeden bu alana erişemezsiniz.\n\n"
+            "Lütfen önce '🏢 Derslik Yönetimi' ekranından derslik bilgilerini tamamlayın."
+        )
+
+
+    def open_ders_yukle_window(self):
+        from ders_yukle_window import DersYukleWindow
+        # Admin kullanıcıları için örnek bolum_id = 1
+        self.ders_yukle_window = DersYukleWindow(bolum_id=1)
+        self.ders_yukle_window.show()
+
+
+
+    if __name__ == "__main__":
+        app = QApplication(sys.argv)
+        # Test için sahte giriş:
+        window = MainWindow("Bölüm Koordinatörü", 1)
+        window.show()
+        sys.exit(app.exec())
+  
+import sqlite3
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QLineEdit, QPushButton,
+    QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QHeaderView, QMessageBox
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPalette
+from database_helper import DatabaseHelper
+
+
+class OgrenciListesiWindow(QWidget):
+    def __init__(self, bolum_id):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.setWindowTitle("👩‍🎓 Öğrenci Ders Listesi")
+        self.setGeometry(400, 200, 800, 500)
+        self.setup_ui()
+
+    def setup_ui(self):
+        title = QLabel("👩‍🎓 Öğrenci Ders Bilgisi")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            QLabel {
+                background-color: #1abc9c;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 6px;
+                margin-bottom: 15px;
+            }
+        """)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Öğrenci numarasını girin...")
+
+        btn_search = QPushButton("Ara")
+        btn_search.setStyleSheet("""
+            QPushButton {
+                background-color: #16a085;
+                color: white;
+                font-weight: bold;
+                padding: 8px 15px;
+                border-radius: 6px;
+            }
+            QPushButton:hover { background-color: #1abc9c; }
+        """)
+        btn_search.clicked.connect(self.search_student)
+
+        hbox = QHBoxLayout()
+        hbox.addWidget(self.search_input)
+        hbox.addWidget(btn_search)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Ders Kodu", "Ders Adı"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.setEnabled(True)
+
+        # --- QSS: güçlü seçicilerle metin rengi siyah ---
+        self.table.setStyleSheet("""
+            QTableWidget, QTableView, QAbstractItemView {
+                color: #000000;
+                background-color: #ffffff;
+                alternate-background-color: #f4f6f4;
+                selection-background-color: #16a085;
+                selection-color: #ffffff;
+                gridline-color: #cccccc;
+                font-size: 13px;
+            }
+            QTableWidget::item, QTableView::item {
+                color: #000000;
+            }
+            QHeaderView::section {
+                background-color: #1abc9c;
+                color: #ffffff;
+                font-weight: 600;
+                padding: 6px;
+                border: none;
+            }
+        """)
+
+        # --- Palette: tema/pencere düzeyi beyazı bastır ---
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        pal.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+        pal.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(244, 246, 244))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(22, 160, 133))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        self.table.setPalette(pal)
+
+        vbox = QVBoxLayout()
+        vbox.addWidget(title)
+        vbox.addLayout(hbox)
+        vbox.addWidget(self.table)
+        self.setLayout(vbox)
+
+    def search_student(self):
+        ogr_no = self.search_input.text().strip()
+        if not ogr_no:
+            QMessageBox.warning(self, "Uyarı", "Lütfen bir öğrenci numarası girin.")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT O.ders_kodu, D.ders_adi
+                FROM Ogrenci_Ders_Kayitlari O
+                JOIN Dersler D ON O.ders_kodu = D.ders_kodu
+                WHERE O.ogrenci_no = ? AND O.bolum_id = ?
+                ORDER BY O.ders_kodu
+            """, (ogr_no, self.bolum_id))
+
+            rows = cur.fetchall()
+            self.table.setRowCount(0)
+
+            if not rows:
+                QMessageBox.information(self, "Bilgi", "Bu öğrenciye ait ders kaydı bulunamadı.")
+                return
+
+            # --- Hücre bazında siyah renk ---
+            for i, (ders_kodu, ders_adi) in enumerate(rows):
+                self.table.insertRow(i)
+                item_kod = QTableWidgetItem(str(ders_kodu))
+                item_adi = QTableWidgetItem(str(ders_adi))
+                item_kod.setForeground(QColor(0, 0, 0))
+                item_adi.setForeground(QColor(0, 0, 0))
+                self.table.setItem(i, 0, item_kod)
+                self.table.setItem(i, 1, item_adi)
+
+            self.table.viewport().update()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Veriler alınırken hata oluştu:\n{e}")
+import pandas as pd
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
+    QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView,
+    QLineEdit, QHBoxLayout
+)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QPalette
+from database_helper import DatabaseHelper
+from unidecode import unidecode
+
+
+
+class OgrenciYukleWindow(QWidget):
+    data_loaded = pyqtSignal()  # ✅ Excel başarıyla yüklendiğinde ana pencereye sinyal gönderir
+
+    def __init__(self, bolum_id):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.setWindowTitle("🎓 Öğrenci Listesi Yükleme")
+        self.setGeometry(400, 200, 900, 600)
+        self.df = None
+        self.setup_ui()
+
+    # ------------------ ARAYÜZ ------------------
+    def setup_ui(self):
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f4f6f4;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+
+            QLabel {
+                color: #004d26;
+                font-size: 16px;
+                font-weight: 500;
+            }
+
+            QPushButton {
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 14px;
+                font-weight: bold;
+                color: white;
+                border: none;
+            }
+
+            QPushButton#upload { background-color: #007bff; }
+            QPushButton#upload:hover { background-color: #1a8cff; }
+
+            QPushButton#save { background-color: #00b050; }
+            QPushButton#save:hover { background-color: #00cc5c; }
+
+            QPushButton#search { background-color: #f57c00; }
+            QPushButton#search:hover { background-color: #ffa31a; }
+
+            QLineEdit {
+                border: 2px solid #007b5e;
+                border-radius: 5px;
+                padding: 6px;
+                background-color: white;
+                font-size: 13px;
+                color: black;
+            }
+
+            QTableWidget, QTableView, QAbstractItemView {
+                border: 1px solid #c8c8c8;
+                background-color: white;
+                alternate-background-color: #f2f2f2;
+                color: black;
+                font-size: 13px;
+                selection-background-color: #16a085;
+                selection-color: white;
+            }
+
+            QHeaderView::section {
+                background-color: #007b5e;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+
+        # Başlık
+        title = QLabel("🎓 Öğrenci Listesi Yükleme ve Görüntüleme")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            QLabel {
+                background-color: #007b5e;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }
+        """)
+
+        # Excel yükleme butonu
+        btn_upload = QPushButton("📂 Excel Dosyası Seç")
+        btn_upload.setObjectName("upload")
+        btn_upload.clicked.connect(self.load_excel)
+
+        # Kaydet butonu
+        self.save_btn = QPushButton("💾 Veritabanına Kaydet")
+        self.save_btn.setObjectName("save")
+        self.save_btn.setEnabled(False)
+        self.save_btn.clicked.connect(self.save_to_db)
+
+        # Arama alanı
+        search_label = QLabel("🔍 Öğrenci No:")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Öğrenci numarasını girin...")
+        btn_search = QPushButton("Ara")
+        btn_search.setObjectName("search")
+        btn_search.clicked.connect(self.search_student)
+
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(btn_search)
+
+        # Tablo
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad", "Sınıf", "Ders Kodu"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+
+        # 🎨 Renklerin beyaz kalmaması için palet uygulandı
+        palette = self.table.palette()
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(242, 242, 242))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(22, 160, 133))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        self.table.setPalette(palette)
+
+        # Ana düzen
+        layout = QVBoxLayout()
+        layout.addWidget(title)
+        layout.addWidget(btn_upload)
+        layout.addWidget(self.save_btn)
+        layout.addLayout(search_layout)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
+
+    # ------------------ EXCEL YÜKLE ------------------
+
+
+    def load_excel(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)"
+        )
+        if not file_path:
+            return
+
+        try:
+            df = pd.read_excel(file_path)
+
+            # 🔹 Türkçe karakterleri temizle (unidecode ile)
+            df.columns = [
+                unidecode(str(c)).strip().replace(" ", "").replace("ı", "i").replace("İ", "I")
+                for c in df.columns
+            ]
+
+            # 🔹 Sütunları yeniden adlandır
+            df.rename(columns={
+                "OgrenciNo": "OgrenciNo",
+                "OgrenciNumara": "OgrenciNo",
+                "OgrenciNumarasi": "OgrenciNo",
+                "Ogrenci": "OgrenciNo",
+                "AdSoyad": "AdSoyad",
+                "Sinif": "Sinif",
+                "Ders": "DersKodu"
+            }, inplace=True)
+
+            expected_cols = ["OgrenciNo", "AdSoyad", "Sinif", "DersKodu"]
+            if not all(col in df.columns for col in expected_cols):
+                QMessageBox.critical(
+                    self, "Hata",
+                    f"Excel formatı hatalı!\nBeklenen sütunlar:\n{expected_cols}\n\nBulunan sütunlar:\n{df.columns.tolist()}"
+                )
+                return
+
+            # 🔹 Tabloya yükle
+            self.df = df.fillna("")
+            self.table.setRowCount(len(self.df))
+            for i, row in self.df.iterrows():
+                for j, col in enumerate(expected_cols):
+                    item = QTableWidgetItem(str(row[col]))
+                    item.setForeground(QColor(0, 0, 0))
+                    self.table.setItem(i, j, item)
+
+            self.save_btn.setEnabled(True)
+            QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
+            self.data_loaded.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{e}")
+
+
+
+    # ------------------ VERİTABANINA KAYDET ------------------
+    def save_to_db(self):
+        if self.df is None or self.df.empty:
+            QMessageBox.warning(self, "Uyarı", "Kaydedilecek veri yok!")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+
+            added, skipped = 0, 0
+            for _, row in self.df.iterrows():
+                ogr_no = str(row["OgrenciNo"]).strip()
+                ders_kodu = str(row["DersKodu"]).strip()
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM Ogrenci_Ders_Kayitlari 
+                    WHERE ogrenci_no=? AND ders_kodu=? AND bolum_id=?
+                """, (ogr_no, ders_kodu, self.bolum_id))
+                if cur.fetchone()[0] > 0:
+                    skipped += 1
+                    continue
+
+                cur.execute("""
+                    INSERT INTO Ogrenci_Ders_Kayitlari 
+                    (ogrenci_no, ad_soyad, sinif, ders_kodu, bolum_id)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    ogr_no,
+                    str(row["AdSoyad"]),
+                    str(row["Sinif"]),
+                    ders_kodu,
+                    self.bolum_id
+                ))
+                added += 1
+
+            conn.commit()
+            QMessageBox.information(self, "Başarılı",
+                f"{added} öğrenci kaydı eklendi.\n{skipped} kayıt zaten mevcuttu.")
+            self.save_btn.setEnabled(False)
+            self.data_loaded.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Kayıt sırasında hata oluştu:\n{e}")
+
+    # ------------------ ÖĞRENCİ ARAMA ------------------
+    def search_student(self):
+        ogr_no = self.search_input.text().strip()
+        if not ogr_no:
+            QMessageBox.warning(self, "Uyarı", "Lütfen bir öğrenci numarası girin.")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ogrenci_no, ad_soyad, sinif, ders_kodu
+                FROM Ogrenci_Ders_Kayitlari
+                WHERE ogrenci_no=? AND bolum_id=?
+            """, (ogr_no, self.bolum_id))
+            rows = cur.fetchall()
+
+            self.table.setRowCount(0)
+            if not rows:
+                QMessageBox.information(self, "Bilgi", "Bu öğrenciye ait kayıt bulunamadı.")
+                return
+
+            for i, row in enumerate(rows):
+                self.table.insertRow(i)
+                for j, val in enumerate(row):
+                    item = QTableWidgetItem(str(val))
+                    item.setForeground(QColor(0, 0, 0))  # 🖤 Hücre metinleri siyah
+                    self.table.setItem(i, j, item)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", str(e))
+import pandas as pd
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
+    QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit, QHBoxLayout
+)
+from PyQt6.QtCore import Qt
+from database_helper import DatabaseHelper
+from PyQt6.QtCore import pyqtSignal
+
+class OgrenciYukleWindow(QWidget):
+    data_loaded = pyqtSignal()  # 📢 Excel başarıyla yüklendiğinde sinyal 
+    def __init__(self, bolum_id):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.setWindowTitle("🎓 Öğrenci Listesi Yükleme")
+        self.setGeometry(400, 200, 900, 600)
+        self.df = None
+        self.setup_ui()
+
+    def setup_ui(self):
+        # ---- GENEL ARAYÜZ STİLİ ----
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f4f6f4;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+
+            QLabel {
+                color: #004d26;
+                font-size: 16px;
+                font-weight: 500;
+            }
+
+            QPushButton {
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 14px;
+                font-weight: bold;
+                color: white;
+                border: none;
+            }
+
+            QPushButton#upload {
+                background-color: #007bff;
+            }
+            QPushButton#upload:hover {
+                background-color: #1a8cff;
+            }
+
+            QPushButton#save {
+                background-color: #00b050;
+            }
+            QPushButton#save:hover {
+                background-color: #00cc5c;
+            }
+
+            QPushButton#search {
+                background-color: #f57c00;
+            }
+            QPushButton#search:hover {
+                background-color: #ffa31a;
+            }
+
+            QLineEdit {
+                border: 2px solid #007b5e;
+                border-radius: 5px;
+                padding: 6px;
+                background-color: white;
+                font-size: 13px;
+                git add .
+color: black;
+
+            }
+
+            QTableWidget {
+                border: 1px solid #c8c8c8;
+                background-color: white;
+                alternate-background-color: #f2f2f2;
+                font-size: 13px;
+            }
+
+            QHeaderView::section {
+                background-color: #007b5e;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+
+        # ---- BAŞLIK ALANI ----
+        title = QLabel("🎓 Öğrenci Listesi Yükleme ve Görüntüleme")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            QLabel {
+                background-color: #007b5e;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }
+        """)
+
+        # ---- BUTONLAR ----
+        btn_upload = QPushButton("📂 Excel Dosyası Seç")
+        btn_upload.setObjectName("upload")
+        btn_upload.clicked.connect(self.load_excel)
+
+        self.save_btn = QPushButton("💾 Veritabanına Kaydet")
+        self.save_btn.setObjectName("save")
+        self.save_btn.setEnabled(False)
+        self.save_btn.clicked.connect(self.save_to_db)
+
+        # ---- ARAMA ALANI ----
+        search_label = QLabel("🔍 Öğrenci No:")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Öğrenci numarasını girin...")
+        btn_search = QPushButton("Ara")
+        btn_search.setObjectName("search")
+        btn_search.clicked.connect(self.search_student)
+
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(btn_search)
+
+        # ---- TABLO ----
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad", "Sınıf", "Ders Kodu"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+
+        # ---- DÜZEN ----
+        layout = QVBoxLayout()
+        layout.addWidget(title)
+        layout.addWidget(btn_upload)
+        layout.addWidget(self.save_btn)
+        layout.addLayout(search_layout)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
+
+    # ------------------ EXCEL YÜKLE ------------------
+    def load_excel(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Excel Dosyası Seç", "", "Excel Dosyaları (*.xlsx *.xls)")
+        if not file_path:
+            return
+
+        try:
+            df = pd.read_excel(file_path)
+            expected_cols = ["OgrenciNo", "AdSoyad", "Sinif", "DersKodu"]
+            if not all(col in df.columns for col in expected_cols):
+                QMessageBox.critical(self, "Hata", f"Excel formatı hatalı!\nBeklenen sütunlar:\n{expected_cols}")
+                return
+
+            self.df = df.fillna("")
+            self.table.setRowCount(len(self.df))
+            for i, row in self.df.iterrows():
+                self.table.setItem(i, 0, QTableWidgetItem(str(row["OgrenciNo"])))
+                self.table.setItem(i, 1, QTableWidgetItem(str(row["AdSoyad"])))
+                self.table.setItem(i, 2, QTableWidgetItem(str(row["Sinif"])))
+                self.table.setItem(i, 3, QTableWidgetItem(str(row["DersKodu"])))
+            self.save_btn.setEnabled(True)
+
+            QMessageBox.information(self, "Başarılı", "Excel dosyası başarıyla yüklendi.")
+            self.data_loaded.emit()
+
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Excel okunamadı:\n{e}")
+
+    # ------------------ VERİTABANINA KAYDET ------------------
+    def save_to_db(self):
+        if self.df is None or self.df.empty:
+            QMessageBox.warning(self, "Uyarı", "Kaydedilecek veri yok!")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+
+            added, skipped = 0, 0
+            for _, row in self.df.iterrows():
+                ogr_no = str(row["OgrenciNo"]).strip()
+                ders_kodu = str(row["DersKodu"]).strip()
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM Ogrenci_Ders_Kayitlari 
+                    WHERE ogrenci_no=? AND ders_kodu=? AND bolum_id=?
+                """, (ogr_no, ders_kodu, self.bolum_id))
+                if cur.fetchone()[0] > 0:
+                    skipped += 1
+                    continue
+
+                cur.execute("""
+                    INSERT INTO Ogrenci_Ders_Kayitlari 
+                    (ogrenci_no, ad_soyad, sinif, ders_kodu, bolum_id)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    ogr_no,
+                    str(row["AdSoyad"]),
+                    str(row["Sinif"]),
+                    ders_kodu,
+                    self.bolum_id
+                ))
+                added += 1
+
+            conn.commit()
+            QMessageBox.information(self, "Başarılı",
+                f"{added} öğrenci kaydı eklendi.\n{skipped} kayıt zaten mevcuttu.")
+
+            self.save_btn.setEnabled(False)
+            QMessageBox.information(self, "Başarılı", f"{added} öğrenci kaydı eklendi.\n{skipped} kayıt zaten mevcuttu.")
+
+# Menüleri aktif etmek için MainWindow'a sinyal gönder
+            self.parent().enable_menus_after_excel()        
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Kayıt sırasında hata oluştu:\n{e}")
+
+    # ------------------ ÖĞRENCİ ARA ------------------
+    def search_student(self):
+        ogr_no = self.search_input.text().strip()
+        if not ogr_no:
+            QMessageBox.warning(self, "Uyarı", "Lütfen bir öğrenci numarası girin.")
+            return
+
+        try:
+            conn = DatabaseHelper.get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ogrenci_no, ad_soyad, sinif, ders_kodu
+                FROM Ogrenci_Ders_Kayitlari
+                WHERE ogrenci_no=? AND bolum_id=?
+            """, (ogr_no, self.bolum_id))
+            rows = cur.fetchall()
+
+            self.table.setRowCount(0)
+            if not rows:
+                QMessageBox.information(self, "Bilgi", "Bu öğrenciye ait kayıt bulunamadı.")
+                return
+
+            for i, row in enumerate(rows):
+                self.table.insertRow(i)
+                for j, val in enumerate(row):
+                    self.table.setItem(i, j, QTableWidgetItem(str(val)))
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", str(e))
+# oturma_plan_window.py
+import sqlite3
+import random
+from typing import List, Tuple
+
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton,
+    QComboBox, QMessageBox, QScrollArea, QGridLayout, QFrame,
+    QTableWidget, QTableWidgetItem, QHeaderView
+)
+from PyQt6.QtCore import Qt
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.colors import Color
+
+
+class OturmaPlanWindow(QWidget):
+    def __init__(self, bolum_id: int):
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"
+        self.setWindowTitle("🪑 Ders Bazlı Oturma Planı")
+        self.resize(1050, 700)
+
+        # (ogr_no, ad_soyad, sira(row), sutun(col), slot(1..n), derslik_adi)
+        self.current_plan: List[Tuple[str, str, int, int, int, str]] = []
+
+        self._setup_ui()
+        self._load_sinavlar()
+
+
+        def paintEvent(self, event):
+            painter = QPainter(self)
+            pixmap = QPixmap(self.bg_path)
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                painter.setOpacity(0.07)
+                painter.drawPixmap(0, 0, scaled)
+
+    # ---------- UI ----------
+    def _setup_ui(self):
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #F8F9F9;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2E2E2E;
+            }
+
+            QLabel#header {
+                color: #1B5E20;
+                font-size: 20px;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+
+            QLabel {
+                font-size: 13px;
+                color: #2E2E2E;
+            }
+
+            QComboBox {
+                background-color: white;
+                border: 1px solid #A5D6A7;
+                border-radius: 5px;
+                padding: 5px;
+            }
+
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+
+            QPushButton:hover {
+                background-color: #1B5E20;
+            }
+
+            QScrollArea, QTableWidget {
+                background-color: white;
+                border: 1px solid #C8E6C9;
+                border-radius: 8px;
+            }
+
+            QHeaderView::section {
+                background-color: #E8F5E9;
+                font-weight: 600;
+                border: 1px solid #C8E6C9;
+            }
+        """)
+
+
+
+
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(25, 20, 25, 20)
+        root.setSpacing(12)
+
+        title = QLabel("📘 Ders Bazlı Oturma Planı")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-weight:bold; font-size:18px; margin-bottom:10px;")
+        root.addWidget(title)
+
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Sınav Seç:"))
+        self.cmb_exam = QComboBox()
+        top.addWidget(self.cmb_exam, 1)
+        self.btn_make = QPushButton("📋 Oturma Planını Oluştur")
+        self.btn_pdf = QPushButton("📄 PDF Olarak Kaydet")
+        self.btn_make.clicked.connect(self.make_plan)
+        self.btn_pdf.clicked.connect(self.export_pdf)
+        top.addWidget(self.btn_make)
+        top.addWidget(self.btn_pdf)
+        root.addLayout(top)
+
+        mid = QHBoxLayout()
+        mid.setSpacing(15)
+
+        # Sol: ızgara (derslik yerleşimi)
+        self.scroll = QScrollArea()
+        self.room_container = QWidget()
+        self.grid = QGridLayout(self.room_container)
+        self.grid.setSpacing(6)
+        self.scroll.setWidget(self.room_container)
+        self.scroll.setWidgetResizable(True)
+        mid.addWidget(self.scroll, 3)
+
+        # Sağ: yerleşenlerin listesi
+        right_title = QLabel("Yerleşen Öğrenciler")
+        right_title.setStyleSheet("font-weight:600;")
+        self.tbl = QTableWidget(0, 6)
+        self.tbl.setHorizontalHeaderLabels(["Öğrenci No", "Ad Soyad", "Derslik", "Sıra", "Sütun", "Slot"])
+        self.tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        right = QVBoxLayout()
+        right.addWidget(right_title)
+        right.addWidget(self.tbl, 1)
+        mid.addLayout(right, 2)
+
+        root.addLayout(mid)
+
+    # ---------- DB helpers ----------
+    def _conn(self):
+        return sqlite3.connect("sinav_takvimi.db")
+    
+
+    def _normalize_duzen(self, duzen_tipi: str | None) -> str:
+        """None gelirse güvenli varsayılan döndür."""
+        return (duzen_tipi or "2'li").strip()
+
+    def _kisi_per_masa(self, duzen_tipi: str | None) -> int:
+        d = self._normalize_duzen(duzen_tipi)
+        return 3 if "3" in d else 2
+
+    def _toplam_koltuk(self, sira: int, sutun: int, duzen_tipi: str | None) -> int:
+        return int(sira) * int(sutun) * self._kisi_per_masa(duzen_tipi)
+
+    
+
+    def _load_sinavlar(self):
+        """Sınav programındaki sınavları listele (ders + derslik + tarih+saat)."""
+        try:
+            conn = self._conn()
+            c = conn.cursor()
+            c.execute("""
+                SELECT sp.id, d.ders_kodu, d.ders_adi, dl.derslik_adi,
+                       sp.tarih, sp.saat, sp.ders_id, sp.derslik_id
+                FROM SinavProgrami sp
+                LEFT JOIN Dersler    d  ON sp.ders_id    = d.rowid
+                LEFT JOIN Derslikler dl ON sp.derslik_id = dl.rowid
+                WHERE sp.bolum_id=?
+                ORDER BY sp.tarih, sp.saat
+            """, (self.bolum_id,))
+            rows = c.fetchall()
+        finally:
+            conn.close()
+
+        self.cmb_exam.clear()
+        for (sp_id, kod, ad, derslik, tarih, saat, ders_id, derslik_id) in rows:
+            label = f"{(kod or '')} - {(ad or '')}  •  {(tarih or '?')} {saat or '?'}  •  {(derslik or '?')}"
+
+            # data: (sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi)
+            self.cmb_exam.addItem(label, (sp_id, ders_id, derslik_id, tarih, saat, kod, ad, derslik))
+
+    # ---------- grid & table temizleme ----------
+    def _clear_grid_and_table(self):
+        for i in reversed(range(self.grid.count())):
+            item = self.grid.itemAt(i)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.tbl.setRowCount(0)
+
+    # ---------- PLAN OLUŞTUR ----------
+    def make_plan(self):
+        try:
+            data = self.cmb_exam.currentData()
+            if not data:
+                QMessageBox.warning(self, "Uyarı", "Lütfen bir sınav seçiniz.")
+                return
+
+            sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi = data
+
+            conn = self._conn()
+            c = conn.cursor()
+
+            # Derslik şemasında 'duzen_tipi' var mı?
+            c.execute("PRAGMA table_info(Derslikler)")
+            cols = [row[1] for row in c.fetchall()]
+            has_duzen = "duzen_tipi" in cols
+
+            # ... derslik bilgisi çekme kısmında:
+            if has_duzen:
+                c.execute("""
+                    SELECT sira_sayisi, sutun_sayisi, duzen_tipi, kapasite
+                    FROM Derslikler WHERE rowid=?
+                """, (derslik_id,))
+                row = c.fetchone()
+                if not row:
+                    conn.close()
+                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (derslik_id={derslik_id}).")
+                    return
+                boyuna_sira, enine_sutun, duzen_tipi, kapasite = row
+                duzen_tipi = self._normalize_duzen(duzen_tipi)
+            else:
+                c.execute("""
+                    SELECT sira_sayisi, sutun_sayisi, kapasite
+                    FROM Derslikler WHERE rowid=?
+                """, (derslik_id,))
+                row = c.fetchone()
+                if not row:
+                    conn.close()
+                    QMessageBox.critical(self, "Hata", f"Derslik bilgisi bulunamadı (derslik_id={derslik_id}).")
+                    return
+                boyuna_sira, enine_sutun, kapasite = row
+                duzen_tipi = "2'li"   # varsayılan
+
+            kisi_per_masa = self._kisi_per_masa(duzen_tipi)
+            toplam_koltuk = self._toplam_koltuk(boyuna_sira, enine_sutun, duzen_tipi)
+
+
+            toplam_koltuk = int(boyuna_sira) * int(enine_sutun) * int(kisi_per_masa)
+
+            # --- Öğrenciler (ders kodunu normalize ederek ara) ---
+            # 1) boşlukları sil + büyük harfe çevir
+            c.execute("""
+                SELECT ogrenci_no, ad_soyad, sinif
+                FROM Ogrenci_Ders_Kayitlari
+                WHERE UPPER(REPLACE(ders_kodu, ' ', '')) = UPPER(REPLACE(?, ' ', ''))
+                  AND bolum_id=?
+                ORDER BY ogrenci_no
+            """, (ders_kodu, self.bolum_id))
+            ogrenciler = c.fetchall()
+
+            # 2) hâlâ boşsa ders_id ile eşleştirerek dene
+            if not ogrenciler:
+                c.execute("""
+                    SELECT odk.ogrenci_no, odk.ad_soyad, odk.sinif
+                    FROM Ogrenci_Ders_Kayitlari odk
+                    WHERE odk.bolum_id=?
+                      AND EXISTS (
+                        SELECT 1
+                        FROM Dersler d
+                        WHERE d.rowid = ?
+                          AND UPPER(REPLACE(d.ders_kodu,' ','')) = UPPER(REPLACE(odk.ders_kodu,' ', ''))
+                      )
+                    ORDER BY odk.ogrenci_no
+                """, (self.bolum_id, ders_id))
+                ogrenciler = c.fetchall()
+
+            uyarilar = []
+
+            if not ogrenciler:
+                conn.close()
+                QMessageBox.information(self, "Bilgi",
+                                        f"{ders_kodu} - {ders_adi} için öğrenci kaydı bulunamadı.")
+                self._clear_grid_and_table()
+                return
+
+            if len(ogrenciler) > toplam_koltuk:
+                fazla = len(ogrenciler) - toplam_koltuk
+                QMessageBox.warning(
+                    self, "Kapasite Uyarısı",
+                    f"Belirtilen öğrenci ön sıraya yerleştirilemedi (kapasite dolu)!\n\n"
+                    f"Sınav: {ders_kodu} - {ders_adi}\n"
+                    f"Derslik: {derslik_adi}  (Düzen: {duzen_tipi}, Sıra×Sütun: {boyuna_sira}×{enine_sutun}, "
+                    f"Kişi/masa: {kisi_per_masa})\n"
+                    f"Kapasite: {toplam_koltuk}  •  Öğrenci: {len(ogrenciler)}  •  Sığmayan: {fazla}"
+                )
+                ogrenciler = ogrenciler[:toplam_koltuk]
+
+
+            # Çakışma kontrolü (aynı tarih-saat)
+            # çakışma kontrolü – ders_kodu normalize ederek eşleştir
+            cakisan = []
+            for ogr_no, ad, _sinif in ogrenciler:
+                c.execute("""
+                    SELECT COUNT(1)
+                    FROM SinavProgrami sp
+                    JOIN Dersler d ON UPPER(REPLACE(d.ders_kodu,' ','')) =
+                                    UPPER(REPLACE((SELECT d2.ders_kodu FROM Dersler d2 WHERE d2.rowid=sp.ders_id),' ', ''))
+                    JOIN Ogrenci_Ders_Kayitlari odk
+                        ON odk.ogrenci_no = ?
+                        AND UPPER(REPLACE(odk.ders_kodu,' ','')) = UPPER(REPLACE(d.ders_kodu,' ', ''))
+                    WHERE sp.tarih=? AND sp.saat=? AND sp.id != ? AND sp.bolum_id=?
+                """, (ogr_no, tarih, saat, sp_id, self.bolum_id))
+                if (c.fetchone() or [0])[0] > 0:
+                    cakisan.append((ogr_no, ad))
+
+            if cakisan:
+                uyarilar.append("⛔ Aynı tarih-saatte başka sınavı olan öğrenciler: " +
+                                ", ".join([f"{o} ({a})" for o, a in cakisan]))
+
+            # Yan yana oturmama (aynı sınıf veya soyad)
+           
+
+
+            def _soyad(s: str) -> str:
+                return (s or "").strip().split()[-1].lower()
+
+            def yan_yana_olamaz(a, b) -> bool:
+                if not a or not b: return False
+                return (a[2] == b[2]) or (_soyad(a[1]) == _soyad(b[1]))
+
+            # deterministik sırala: sınıf, soyad, öğrenci no
+            ogrenciler.sort(key=lambda x: (x[2], _soyad(x[1]), str(x[0])))
+
+            # zig-zag dağıtım: çift indexler önce, tek indexler sonra – komşuluğu azaltır
+            sol = ogrenciler[::2]
+            sag = ogrenciler[1::2]
+            ogrenciler = sol + sag
+
+            # kontrol: yan yana kalanları raporla
+            sorunlu_komsu = []
+            for i in range(len(ogrenciler)-1):
+                if yan_yana_olamaz(ogrenciler[i], ogrenciler[i+1]):
+                    sorunlu_komsu.append((ogrenciler[i][1], ogrenciler[i+1][1]))
+
+            if sorunlu_komsu:
+                QMessageBox.warning(
+                    self, "Uyarı",
+                    "Bu iki öğrenci yan yana oturmayacak şekilde plan oluşturulamadı!\n\n"
+                    + "\n".join([f"• {a}  &  {b}" for a,b in sorunlu_komsu[:12]])
+                    + ("\n..." if len(sorunlu_komsu) > 12 else "")
+                    + f"\n\nSınav: {ders_kodu} - {ders_adi}  •  Derslik: {derslik_adi}"
+                )
+
+            # --- Çizim öncesi temizle ---
+            self._clear_grid_and_table()
+
+            # --- Yerleştir & Çiz ---
+            # Üstte ‘ÖN’ şeridi
+            header = QLabel("Ö N")
+            header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            header.setStyleSheet("background:#eef3ff; border:1px solid #bbc7e5; font-weight:600; padding:4px;")
+            self.grid.addWidget(header, 0, 0, 1, int(enine_sutun))
+
+            self.current_plan.clear()
+            index = 0
+            for r in range(int(boyuna_sira)):       # satırlar
+                for ccol in range(int(enine_sutun)): # masalar
+                    masa = QFrame()
+                    masa.setFrameShape(QFrame.Shape.Box)
+                    masa.setStyleSheet("background-color:#f6f7f9; border:1px solid #cfd4dc;")
+                    masa_layout = QHBoxLayout(); masa_layout.setContentsMargins(4,4,4,4); masa_layout.setSpacing(6)
+
+                    for s in range(int(kisi_per_masa)):
+                        vbox = QVBoxLayout(); vbox.setContentsMargins(0,0,0,0); vbox.setSpacing(2)
+                        slot_lbl = QLabel(f"Slot {s+1}"); slot_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        slot_lbl.setStyleSheet("color:#6b7280; font-size:10px;")
+                        name_lbl = QLabel(); name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        name_lbl.setStyleSheet("font-size:11px;")
+                        if index < len(ogrenciler):
+                            ogr_no, ad, sinif = ogrenciler[index]
+                            name_lbl.setText(f"{ogr_no}\n{ad}")
+                            self.current_plan.append((str(ogr_no), str(ad), r+1, ccol+1, s+1, derslik_adi))
+                            index += 1
+                        else:
+                            name_lbl.setText("—")
+                        vbox.addWidget(slot_lbl); vbox.addWidget(name_lbl)
+                        masa_layout.addLayout(vbox)
+                    masa.setLayout(masa_layout)
+                    # +1: ilk satır başlık şeridi için ayrıldı
+                    self.grid.addWidget(masa, r+1, ccol)
+
+
+            # Sağdaki tabloyu doldur
+            self.tbl.setRowCount(len(self.current_plan))
+            for i, (ogr_no, ad, rowi, coli, sloti, d_adi) in enumerate(self.current_plan):
+                self.tbl.setItem(i, 0, QTableWidgetItem(ogr_no))
+                self.tbl.setItem(i, 1, QTableWidgetItem(ad))
+                self.tbl.setItem(i, 2, QTableWidgetItem(d_adi))
+                self.tbl.setItem(i, 3, QTableWidgetItem(str(rowi)))
+                self.tbl.setItem(i, 4, QTableWidgetItem(str(coli)))
+                self.tbl.setItem(i, 5, QTableWidgetItem(str(sloti)))
+
+            info = (f"{ders_kodu} - {ders_adi}\n"
+                    f"{derslik_adi} için oturma planı oluşturuldu.\n"
+                    f"Yerleşen öğrenci: {len(self.current_plan)} / {len(ogrenciler)} "
+                    f"(toplam kapasite: {toplam_koltuk}).")
+            if uyarilar:
+                info += "\n\n" + "\n".join(uyarilar)
+            QMessageBox.information(self, "Bilgi", info)
+
+            conn.close()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Oturma planı oluşturulurken hata oluştu:\n{e}")
+
+      # ---------- PDF export ----------
+    def export_pdf(self):
+    
+
+        try:
+            if not self.current_plan:
+                QMessageBox.warning(self, "Uyarı", "Lütfen önce oturma planını oluşturun.")
+                return
+
+            data = self.cmb_exam.currentData()
+            if not data:
+                QMessageBox.warning(self, "Uyarı", "Sınav bilgisi bulunamadı.")
+                return
+
+            sp_id, ders_id, derslik_id, tarih, saat, ders_kodu, ders_adi, derslik_adi = data
+
+            conn = self._conn()
+            c = conn.cursor()
+            c.execute("""
+                SELECT sira_sayisi, sutun_sayisi, duzen_tipi
+                FROM Derslikler WHERE rowid=?
+            """, (derslik_id,))
+            row = c.fetchone()
+            if not row:
+                QMessageBox.warning(self, "Uyarı", "Derslik bilgisi alınamadı.")
+                return
+
+            boyuna_sira, enine_sutun, duzen_tipi = row
+            kisi_per_masa = 3 if (duzen_tipi and "3" in str(duzen_tipi)) else 2
+            conn.close()
+
+            pdf_name = f"oturma_plani_{(ders_kodu or 'ders').replace(' ', '_')}_{tarih.replace('-', '')}_{saat.replace(':','')}.pdf"
+
+            # ✅ Unicode font kaydı (DejaVuSans veya Arial Unicode)
+            try:
+                pdfmetrics.registerFont(TTFont("DejaVuSans", "/Library/Fonts/Arial Unicode.ttf"))
+                font_name = "DejaVuSans"
+            except:
+                from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+                pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
+                font_name = "HeiseiKakuGo-W5"
+
+            pdf = canvas.Canvas(pdf_name, pagesize=A4)
+            w, h = A4
+
+            pdf.setFont(font_name, 14)
+            pdf.drawString(50, h - 50, "KOCAELİ ÜNİVERSİTESİ - DERS BAZLI OTURMA PLANI")
+
+            pdf.setFont(font_name, 11)
+            pdf.drawString(50, h - 70, f"Ders: {ders_kodu or ''} - {ders_adi or ''}")
+            pdf.drawString(50, h - 90, f"Derslik: {derslik_adi or ''}")
+            pdf.drawString(50, h - 110, f"Tarih: {tarih}  Saat: {saat}")
+
+            x_start, y_start = 50, h - 150
+            box_w, box_h = 58, 34
+            gap = 10
+
+            pdf.setFont(font_name, 8)
+            pink = Color(1, 0.75, 0.8)  # pembe tonu
+
+            for (ogr_no, ad, rowi, coli, sloti, _dadi) in self.current_plan:
+                x = x_start + ((coli - 1) * ((box_w * kisi_per_masa) + gap)) + ((sloti - 1) * (box_w + 6))
+                y = y_start - ((rowi - 1) * (box_h + gap))
+
+                pdf.setFillColor(pink)
+                pdf.rect(x, y, box_w, box_h, fill=1, stroke=1)
+
+                pdf.setFillColorRGB(0, 0, 0)
+                pdf.drawString(x + 4, y + 22, str(ogr_no))
+                pdf.drawString(x + 4, y + 12, (ad or "")[:25])
+                pdf.drawString(x + 4, y + 2, f"S:{rowi},K:{coli},Y:{sloti}")
+
+            pdf.save()
+
+            # ✅ Otomatik aç
+            import os, platform, subprocess
+            system = platform.system()
+            try:
+                if system == "Windows":
+                    os.startfile(pdf_name)
+                elif system == "Darwin":  # macOS
+                    subprocess.call(["open", pdf_name])
+                else:
+                    subprocess.call(["xdg-open", pdf_name])
+            except Exception:
+                QMessageBox.warning(self, "Uyarı", "PDF kaydedildi ancak otomatik açılamadı.")
+
+            QMessageBox.information(self, "PDF Kaydedildi", f"{pdf_name} oluşturuldu ve açıldı.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"PDF üretirken hata oluştu:\n{e}")
+
+import sqlite3
+import os
+import platform
+import subprocess
+import pandas as pd
+import traceback
+from PyQt6.QtGui import QPainter, QPixmap
+
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.utils import get_column_letter
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QHBoxLayout,
+    QPushButton, QDateEdit, QSpinBox, QComboBox,
+    QMessageBox, QListWidget, QListWidgetItem
+)
+from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidgetItem, QInputDialog
+
+
+class SinavProgramiWindow(QWidget):
+    def __init__(self, bolum_id):
+        self.istisna_sureleri = {}  # {ders_id: sure_dk}
+
+        super().__init__()
+        self.bolum_id = bolum_id
+        self.bg_path = "/Users/USER/SinavTakvimiProjesi-2/kou.jpg"  # 
+        self.setWindowTitle("📅 Sınav Programı Oluştur")
+        self.resize(720, 600)
+        self.setup_ui()
+        self.load_dersler()
+
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pixmap = QPixmap(self.bg_path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            painter.setOpacity(0.08)
+            painter.drawPixmap(0, 0, scaled)
+        painter.end()
+
+    # ---------------- UI ----------------
+    def setup_ui(self):
+         
+
+        self.setStyleSheet("""
+                QWidget {
+                background-color: #F8F9F9;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2E2E2E;
+            }
+
+            QLabel#header {
+                color: #1B5E20;
+                font-size: 20px;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+
+            QLabel {
+                color: #2E2E2E;
+                font-size: 13px;
+            }
+
+            QListWidget {
+                background-color: white;
+                border: 1px solid #C8E6C9;
+                border-radius: 8px;
+                padding: 6px;
+            }
+
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px;
+                font-weight: 600;
+            }
+
+            QPushButton:hover {
+                background-color: #1B5E20;
+            }
+
+            QDateEdit, QComboBox, QSpinBox {
+                background-color: white;
+                border: 1px solid #A5D6A7;
+                border-radius: 4px;
+                padding: 4px;
+                font-size: 13px;
+            }
+        """)     
+
+
+
+
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(30, 25, 30, 25)
+        layout.setSpacing(10)
+
+
+        header = QLabel("📅 Sınav Programı Oluştur")
+        header.setObjectName("header")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(header)
+
+
+        layout.addWidget(QLabel("Dahil Edilecek Dersler:"))
+        self.ders_list = QListWidget()
+        layout.addWidget(self.ders_list)
+
+        tarih_layout = QHBoxLayout()
+        tarih_layout.addWidget(QLabel("Başlangıç Tarihi:"))
+        self.start_date = QDateEdit()
+        self.start_date.setCalendarPopup(True)
+        self.start_date.setDate(QDate.currentDate())
+        tarih_layout.addWidget(self.start_date)
+
+        tarih_layout.addWidget(QLabel("Bitiş Tarihi:"))
+        self.end_date = QDateEdit()
+        self.end_date.setCalendarPopup(True)
+        self.end_date.setDate(QDate.currentDate().addDays(5))
+        tarih_layout.addWidget(self.end_date)
+        layout.addLayout(tarih_layout)
+
+        tur_layout = QHBoxLayout()
+        tur_layout.addWidget(QLabel("Sınav Türü:"))
+        self.tur_combo = QComboBox()
+        self.tur_combo.addItems(["Vize", "Final", "Bütünleme"])
+        tur_layout.addWidget(self.tur_combo)
+        layout.addLayout(tur_layout)
+
+        sure_layout = QHBoxLayout()
+        sure_layout.addWidget(QLabel("Sınav Süresi (dk):"))
+        self.sure_spin = QSpinBox()
+        self.sure_spin.setRange(30, 180)
+        self.sure_spin.setValue(75)
+        sure_layout.addWidget(self.sure_spin)
+
+        sure_layout.addWidget(QLabel("Bekleme Süresi (dk):"))
+        self.bekleme_spin = QSpinBox()
+        self.bekleme_spin.setRange(5, 60)
+        self.bekleme_spin.setValue(15)
+        sure_layout.addWidget(self.bekleme_spin)
+        layout.addLayout(sure_layout)
+
+
+        # --- İstisnai süre butonu ---
+        self.istisna_btn = QPushButton("🕒 İstisnai Sınav Süresi Belirle")
+        self.istisna_btn.setToolTip("Bazı dersler için farklı sınav süresi tanımla")
+        self.istisna_btn.clicked.connect(self.open_istisna_dialog)
+        layout.addWidget(self.istisna_btn)
+
+
+        self.olustur_btn = QPushButton("📅 Programı Oluştur")
+        self.olustur_btn.clicked.connect(self.create_program)
+        layout.addWidget(self.olustur_btn)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+    # ---------------- Dersleri yükle ----------------
+    def load_dersler(self):
+        conn = sqlite3.connect("sinav_takvimi.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT rowid AS id, ders_adi, ders_kodu, sinif FROM Dersler WHERE bolum_id=?",
+            (self.bolum_id,)
+        )
+        dersler = cursor.fetchall()
+        conn.close()
+
+        self.ders_list.clear()
+        for ders in dersler:
+            item = QListWidgetItem(f"{ders[2]} - {ders[1]} (Sınıf: {ders[3]})")
+            item.setData(Qt.ItemDataRole.UserRole, ders[0])
+            item.setCheckState(Qt.CheckState.Checked)
+            self.ders_list.addItem(item)
+
+
+
+    from PyQt6.QtWidgets import QInputDialog
+
+    def open_istisna_dialog(self):
+        if self.ders_list.count() == 0:
+            QMessageBox.warning(self, "Uyarı", "Henüz ders listesi yüklenmemiş.")
+            return
+
+        # 💡 Önce kullanıcıya bir ders seçtir
+        dersler = []
+        ders_map = {}
+        for i in range(self.ders_list.count()):
+            item = self.ders_list.item(i)
+            ders_adi = item.text()
+            ders_id = item.data(Qt.ItemDataRole.UserRole)
+            dersler.append(ders_adi)
+            ders_map[ders_adi] = ders_id
+
+        ders_adi, ok = QInputDialog.getItem(
+            self,
+            "İstisnai Süre",
+            "İstisna uygulanacak dersi seçin:",
+            dersler,
+            editable=False
+        )
+        if not ok or not ders_adi:
+            return  # kullanıcı iptal ettiyse çık
+
+        # 🕒 sonra sadece o ders için süre sor
+        sure, ok = QInputDialog.getInt(
+            self,
+            "İstisnai Süre",
+            f"{ders_adi} için sınav süresi (dakika):",
+            75, 30, 180, 5
+        )
+        if not ok:
+            return
+
+        # 💾 kaydet
+        ders_id = ders_map[ders_adi]
+        self.istisna_sureleri[ders_id] = sure
+
+        QMessageBox.information(
+            self,
+            "Bilgi",
+            f"{ders_adi} için sınav süresi {sure} dk olarak kaydedildi."
+        )
+
+
+
+    # ---------------- Program oluşturma ----------------
+    def create_program(self):
+        from datetime import timedelta, datetime
+        try:
+            conn = sqlite3.connect("sinav_takvimi.db")
+            cur = conn.cursor()
+
+            # tablo yoksa oluştur
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS SinavProgrami (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ders_id INTEGER,
+                    derslik_id INTEGER,
+                    tarih TEXT,
+                    saat TEXT,
+                    sure INTEGER,
+                    sinav_turu TEXT,
+                    bolum_id INTEGER
+                )
+            """)
+            conn.commit()
+
+            baslangic = self.start_date.date().toPyDate()
+            bitis = self.end_date.date().toPyDate()
+            sinav_turu = self.tur_combo.currentText()
+            sure = self.sure_spin.value()
+            # 🔹 Her ders için özel süre varsa onu kullan
+            
+
+            min_gap = self.bekleme_spin.value()
+
+            # seçilen dersler
+            secili_dersler = [
+                self.ders_list.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(self.ders_list.count())
+                if self.ders_list.item(i).checkState() == Qt.CheckState.Checked
+            ]
+            if not secili_dersler:
+                QMessageBox.warning(self, "Uyarı", "Lütfen en az bir ders seçin!")
+                return
+
+            # derslikler
+            cur.execute(
+                "SELECT rowid AS id, derslik_adi, kapasite, sira_sayisi, sutun_sayisi, duzen_tipi FROM Derslikler WHERE bolum_id=?",
+                (self.bolum_id,)
+            )
+            derslikler = cur.fetchall()
+            if not derslikler:
+                QMessageBox.warning(self, "Uyarı", "Bu bölüme ait derslik bulunamadı!")
+                return
+
+            ders_bilgisi = {}
+            ogrencisiz = []
+
+            # ders bilgilerini al
+            for ders_id in secili_dersler:
+                ders_sure = self.istisna_sureleri.get(ders_id, sure)
+                cur.execute("SELECT ders_kodu, ders_adi, sinif FROM Dersler WHERE rowid=?", (ders_id,))
+                row = cur.fetchone()
+                if not row:
+                    continue
+                ders_kodu, ders_adi, sinif = row
+                ders_kodu = ders_kodu.strip().upper()
+
+                cur.execute("""
+                    SELECT DISTINCT ogrenci_no
+                    FROM Ogrenci_Ders_Kayitlari
+                    WHERE UPPER(ders_kodu)=? AND bolum_id=?
+                """, (ders_kodu, self.bolum_id))
+                ogrenciler = [r[0] for r in cur.fetchall()]
+
+                if not ogrenciler:
+                    ogrencisiz.append(f"{ders_kodu} - {ders_adi}")
+                    continue
+
+                ders_bilgisi[ders_id] = (ders_kodu, ders_adi, sinif, len(ogrenciler), ogrenciler)
+
+            tarih_listesi = [
+                baslangic + timedelta(days=i)
+                for i in range((bitis - baslangic).days + 1)
+                if (baslangic + timedelta(days=i)).weekday() < 5
+            ]
+            saat_listesi = ["09:00", "11:00", "13:00", "15:00"]
+
+            cur.execute("DELETE FROM SinavProgrami WHERE bolum_id=?", (self.bolum_id,))
+            conn.commit()
+
+            ogrenci_program = {}
+            slot_rooms = {}
+            grade_next_day = {}
+            ders_siralama = [d for d in secili_dersler if d in ders_bilgisi]
+            ders_siralama.sort(key=lambda d: ders_bilgisi[d][3], reverse=True)
+            program = []
+            uyarilar = []
+            doluluk_raporu = {}
+
+
+
+            def slot_uygun_mu(ogrenciler, day, hour, ders_sinif):
+                h, m = parse_time(hour)
+                slot_dt = datetime(day.year, day.month, day.day, h, m)
+                for ogr in ogrenciler:
+                    for var_dt, sinif in ogrenci_program.get(ogr, []):
+                        diff = abs((slot_dt - var_dt).total_seconds()) / 60.0
+                        if diff < min_gap or (sinif == ders_sinif and slot_dt.date() == var_dt.date()):
+                            return False
+                return True
+
+
+           
+
+
+
+
+
+            def uygun_derslik_bul(kac_ogr, day, hour):
+                key = (day.isoformat(), hour)
+                kullanilan = slot_rooms.get(key, set())
+                uygun_odalar, yetersizler = [], []
+                for (rid, rname, cap, sira, sutun, duzen) in derslikler:
+                    if rid in kullanilan:
+                        continue
+                    duzen = duzen or "2'li"  # eğer None ise varsayılan olarak "2'li" kabul et
+                    grup = 2 if "2" in duzen else 3
+
+                    gercek_kapasite = sira * sutun * grup
+                    if gercek_kapasite >= kac_ogr:
+                        uygun_odalar.append((rid, rname, gercek_kapasite))
+                    else:
+                        yetersizler.append(f"{rname} ({gercek_kapasite}/{kac_ogr})")
+                if uygun_odalar:
+                    return min(uygun_odalar, key=lambda x: x[2])
+                elif yetersizler:
+                    raise ValueError("Kapasite yetersiz: " + ", ".join(yetersizler))
+                return None
+
+            def parse_time(hhmm):
+                h, m = map(int, hhmm.split(":"))
+                return h, m
+
+            
+
+
+
+
+
+            for ders_id in ders_siralama:
+                ders_kodu, ders_adi, sinif, ogr_say, ogr_list = ders_bilgisi[ders_id]
+                yerlesti = False
+                for gun in tarih_listesi:
+                    for saat in saat_listesi:
+                        if not slot_uygun_mu(ogr_list, gun, saat, sinif):
+                            continue
+
+                        try:
+                            oda = uygun_derslik_bul(ogr_say, gun, saat)
+                        except ValueError as ve:
+                            uyarilar.append(f"⚠️ {ders_kodu} - {ders_adi}: {ve}")
+                            continue
+                        if not oda:
+                            continue
+                        yerlesti = True
+                        cur.execute("""
+                            INSERT INTO SinavProgrami (ders_id, derslik_id, tarih, saat, ders_sure, sinav_turu, bolum_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (ders_id, oda[0], gun.strftime("%Y-%m-%d"), saat, sure, sinav_turu, self.bolum_id))
+                        h, m = parse_time(saat)
+                        slot_dt = datetime(gun.year, gun.month, gun.day, h, m)
+                        for ogr in ogr_list:
+                            ogrenci_program.setdefault(ogr, []).append((slot_dt, sinif))
+
+                        slot_rooms.setdefault((gun.isoformat(), saat), set()).add(oda[0])
+                        doluluk_raporu.setdefault(oda[1], []).append(ogr_say)
+                        program.append([
+                            f"{ders_kodu} - {ders_adi}",
+                            oda[1],
+                            gun.strftime("%d.%m.%Y"),
+                            saat,
+                            ders_sure,
+                            sinav_turu
+                        ])
+
+                        break
+                    if yerlesti:
+                        break
+                if not yerlesti:
+                    uyarilar.append(f"⚠️ {ders_kodu} - {ders_adi}: Uygun slot veya derslik bulunamadı.")
+
+            conn.commit()
+            conn.close()
+
+            if not program:
+                QMessageBox.warning(self, "Bilgi", "Uygun program oluşturulamadı.")
+                return
+
+            file_path = os.path.abspath("sinav_programi.xlsx")
+            df = pd.DataFrame(program, columns=["Ders", "Derslik", "Tarih", "Saat", "Süre (dk)", "Tür"])
+            rapor = pd.DataFrame(
+                [{"Derslik": d, "Ortalama Doluluk": f"{sum(lst)}/{len(lst)} sınav"} for d, lst in doluluk_raporu.items()]
+            )
+            uyaridf = pd.DataFrame(uyarilar + [f"Öğrencisiz ders: {x}" for x in ogrencisiz], columns=["Uyarılar"])
+
+            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name="Sınav Programı", index=False)
+                rapor.to_excel(writer, sheet_name="Derslik Raporu", index=False)
+                uyaridf.to_excel(writer, sheet_name="Uyarılar", index=False)
+
+            wb = load_workbook(file_path)
+            ws = wb["Sınav Programı"]
+            renkler = ["#E3F2FD", "#E8F5E9", "#FFF3E0", "#F3E5F5"]
+            row_color_map = {}
+            for i, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=3, max_col=3)):
+                tarih = row[0].value
+                if tarih not in row_color_map:
+                    row_color_map[tarih] = renkler[len(row_color_map) % len(renkler)]
+                renk = row_color_map[tarih]
+                fill = PatternFill(start_color=renk.replace("#", ""), end_color=renk.replace("#", ""), fill_type="solid")
+                for cell in ws[i + 2]:
+                    cell.fill = fill
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    cell.font = Font(name="Segoe UI", size=11)
+            for i in range(1, ws.max_column + 1):
+                ws.column_dimensions[get_column_letter(i)].width = 20
+            wb.save(file_path)
+
+            # otomatik aç
+            system = platform.system()
+            try:
+                if system == "Windows":
+                    os.startfile(file_path)
+                elif system == "Darwin":
+                    subprocess.call(["open", file_path])
+                else:
+                    subprocess.call(["xdg-open", file_path])
+            except Exception:
+                QMessageBox.warning(self, "Uyarı", "Excel otomatik açılamadı, dosya klasöre kaydedildi.")
+
+            QMessageBox.information(self, "Başarılı", f"Sınav programı oluşturuldu ve açıldı:\n\n{file_path}")
+
+        except Exception as e:
+            detay = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+            QMessageBox.critical(self, "Hata", f"Sınav programı oluşturulurken hata oluştu:\n{detay}")
+

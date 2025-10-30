@@ -52,6 +52,11 @@ def fade_image(pixmap, opacity=0.1, blur_radius=8):
 
 
 class DerslikWindow(QWidget):
+
+
+    from PyQt6.QtCore import pyqtSignal
+    data_loaded = pyqtSignal()  # 💡 Derslik eklendiğinde sinyal gönderir
+
     def __init__(self, bolum_id):
         super().__init__()
         self.bolum_id = bolum_id
@@ -329,6 +334,8 @@ class DerslikWindow(QWidget):
         conn.commit()
         conn.close()
         self.load_data()
+        self.data_loaded.emit()  # ✅ Kayıt sonrası sinyal gönder
+
 
     def delete_derslik(self):
         selected = self.table.currentRow()
